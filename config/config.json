@@ -1,0 +1,23 @@
+{
+  "development": {
+    "username": "postgres",
+    "password": "ibad",
+    "database": "ai_crm",
+    "host": "127.0.0.1",
+    "dialect": "postgres"
+  },
+  "test": {
+    "username": "root",
+    "password": null,
+    "database": "ai_crm_test",
+    "host": "127.0.0.1",
+    "dialect": "mysql"
+  },
+  "production": {
+    "username": "root",
+    "password": null,
+    "database": "ai_crm",
+    "host": "127.0.0.1",
+    "dialect": "mysql"
+  }
+}
