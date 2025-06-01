@@ -6,7 +6,7 @@ const callRoutes = require("./callRoutes");
 const performanceRoutes = require("./performanceRoutes");
 
 router.use("/auth", authRoutes);
-router.use("/call", authMiddleware, callRoutes);
+router.use("/call", callRoutes); // Remove auth middleware for demo
 router.use("/performance", authMiddleware, performanceRoutes);
 
 module.exports = router;

@@ -19,7 +19,8 @@ const openai = new OpenAI({
 
 uploadCall = async (req, res) => {
   try {
-    const userId = req.user.id;
+    // For demo - skip authentication
+    const userId = 1; // Demo user ID
     const { callNotes } = req?.body || {};
     const file = req.file;
 
@@ -48,29 +49,31 @@ uploadCall = async (req, res) => {
       );
     }
 
-    // Create a new call record
-    const newCall = await CallRepo.createCall({
-      userId,
+    // Create a demo call object (skip database for demo)
+    const demoCall = {
+      id: Date.now(), // Use timestamp as fake ID
       status: "pending",
       audioUrl: file.path,
       callDate: new Date(),
       callNotes: callNotes || "",
-    });
+    };
 
     // Process the call asynchronously
-    setImmediate(() => processCall(newCall, file));
+    setImmediate(() => processCall(demoCall, file));
 
     return successResponse(
       res, 
       { 
-        id: newCall.id,
-        status: "pending" 
+        id: demoCall.id,
+        status: "pending",
+        message: "File uploaded successfully for demo",
+        filePath: file.path
       }, 
       "Call uploaded successfully and queued for processing"
     );
   } catch (error) {
     console.error("Error in uploadCall controller:", error);
-    return errorResponse(res, error.message || "Failed to upload call");
+    return errorResponse(res, error.message || "Failed to upload call", 500);
   }
 };
 

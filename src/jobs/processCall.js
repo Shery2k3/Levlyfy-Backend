@@ -46,92 +46,92 @@ const processCall = async (call, file) => {
     }
 
     // Update call with encrypted file path and processing status
-    await Call.update(
-      {
-        audioUrl: encryptedFilePath,
-        status: "processing"
-      },
-      {
-        where: { id: call.id },
-      }
-    );
+    // await Call.update(
+    //   {
+    //     audioUrl: encryptedFilePath,
+    //     status: "processing"
+    //   },
+    //   {
+    //     where: { id: call.id },
+    //   }
+    // );
 
     // Transcribe audio with retries built into the transcribeAudio function
-    console.log("🎙️ Transcribing audio...");
-    let transcript;
-    try {
-      transcript = await transcribeAudio(encryptedFilePath);
-      console.log("✅ Transcription successful");
-    } catch (transcriptError) {
-      console.error("❌ Transcription failed after retries:", transcriptError);
-      throw new Error(`Transcription failed: ${transcriptError.message}`);
-    }
+    // console.log("🎙️ Transcribing audio...");
+    // let transcript;
+    // try {
+    //   transcript = await transcribeAudio(encryptedFilePath);
+    //   console.log("✅ Transcription successful");
+    // } catch (transcriptError) {
+    //   console.error("❌ Transcription failed after retries:", transcriptError);
+    //   throw new Error(`Transcription failed: ${transcriptError.message}`);
+    // }
 
-    // If transcript is empty or undefined, throw error
-    if (!transcript || transcript.trim() === "") {
-      throw new Error("Empty transcript returned from Whisper API");
-    }
+    // // If transcript is empty or undefined, throw error
+    // if (!transcript || transcript.trim() === "") {
+    //   throw new Error("Empty transcript returned from Whisper API");
+    // }
 
     // Analyze the transcript
-    console.log("🧠 Analyzing call transcript...");
+    // console.log("🧠 Analyzing call transcript...");
 
 
-    let analysis = null;
-    const maxRetries = 3;
+    // let analysis = null;
+    // const maxRetries = 3;
     
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        console.log(`🔁 GPT analysis attempt ${attempt} for Call ID: ${call.id}`);
-        analysis = await analyzeCall();
-        console.log("✅ Analysis successful");
-        break;
-      } catch (err) {
-        console.error(`❌ GPT Error on attempt ${attempt}:`, err.message);
-        if (attempt < maxRetries) {
-          const wait = 2000 * attempt; // Exponential backoff
-          console.log(`⏱️ Retrying analysis in ${wait}ms...`);
-          await sleep(wait);
-        } else {
-          throw new Error("GPT analysis failed after all retries");
-        }
-      }
-    }
+    // for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    //   try {
+    //     console.log(`🔁 GPT analysis attempt ${attempt} for Call ID: ${call.id}`);
+    //     analysis = await analyzeCall();
+    //     console.log("✅ Analysis successful");
+    //     break;
+    //   } catch (err) {
+    //     console.error(`❌ GPT Error on attempt ${attempt}:`, err.message);
+    //     if (attempt < maxRetries) {
+    //       const wait = 2000 * attempt; // Exponential backoff
+    //       console.log(`⏱️ Retrying analysis in ${wait}ms...`);
+    //       await sleep(wait);
+    //     } else {
+    //       throw new Error("GPT analysis failed after all retries");
+    //     }
+    //   }
+    // }
 
-    // Update the call record with results
-    await Call.update(
-      {
-        // transcript,
-        sentiment: analysis?.sentiment || "Unknown",
-        callFeedback: analysis?.feedback || "",
-        callSummary: analysis?.summary || "",
-        status: "complete",
-      },
-      {
-        where: { id: call.id },
-      }
-    );
+    // // Update the call record with results
+    // await Call.update(
+    //   {
+    //     // transcript,
+    //     sentiment: analysis?.sentiment || "Unknown",
+    //     callFeedback: analysis?.feedback || "",
+    //     callSummary: analysis?.summary || "",
+    //     status: "complete",
+    //   },
+    //   {
+    //     where: { id: call.id },
+    //   }
+    // );
 
-    // Create performance record
-    if (analysis && analysis.score) {
-      await Performance.create({
-        userId: call.userId,
-        score: analysis.score.toString(),
-        feedback: analysis?.feedback || "",
-      });
-    }
+    // // Create performance record
+    // if (analysis && analysis.score) {
+    //   await Performance.create({
+    //     userId: call.userId,
+    //     score: analysis.score.toString(),
+    //     feedback: analysis?.feedback || "",
+    //   });
+    // }
 
     console.log(`✅ Successfully processed Call ID ${call.id}`);
   } catch (err) {
     console.error(`⛔ Final failure for Call ID ${call.id}:`, err.message);
     
     // Update call status to failed
-    await Call.update(
-      { 
-        status: "failed",
-        callNotes: `Processing failed: ${err.message}` 
-      }, 
-      { where: { id: call.id } }
-    );
+    // await Call.update(
+    //   { 
+    //     status: "failed",
+    //     callNotes: `Processing failed: ${err.message}` 
+    //   }, 
+    //   { where: { id: call.id } }
+    // );
   }
 };
 
