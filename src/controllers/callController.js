@@ -6,11 +6,11 @@ const {
 } = require("./baseController.js");
 const { transcribeAudio } = require("../services/whisperService");
 const processCall = require("../jobs/processCall.js");
-const CallRepo = require("../repos/CallRepo.js");
 const path = require("path");
 const fs = require("fs");
 const { decryptFile } = require("../utils/fileEncryption.js");
 const { OpenAI } = require("openai");
+const Call = require("../../models/call.js");
 require("dotenv").config();
 
 const openai = new OpenAI({
@@ -20,13 +20,16 @@ const openai = new OpenAI({
 uploadCall = async (req, res) => {
   try {
     // For demo - skip authentication
-    const userId = 1; // Demo user ID
+    const userId = req.user?._id || req.body.userId || null; // Use real userId if available
     const { callNotes } = req?.body || {};
     const file = req.file;
 
     // Validate file existence
     if (!file) {
       return validationErrorResponse(res, "Please upload an audio file");
+    }
+    if (!userId) {
+      return validationErrorResponse(res, "User ID is required");
     }
 
     console.log("📁 S3 File received:", {
@@ -37,31 +40,29 @@ uploadCall = async (req, res) => {
       s3Key: file.key
     });
 
-    // Create a demo call object (skip database for demo)
-    const demoCall = {
-      id: Date.now(), // Use timestamp as fake ID
+    // Save call to MongoDB
+    const newCall = await Call.create({
       userId,
       status: "pending",
-      audioUrl: file.location, // S3 file URL
-      s3Key: file.key, // S3 file key for future operations
+      audioUrl: file.location,
+      s3Key: file.key,
       callDate: new Date(),
       callNotes: callNotes || "",
-    };
+    });
 
-    // Process the call asynchronously (skip for demo)
-    // setImmediate(() => processCall(demoCall, file));
-    // console.log("⏭️ Skipping background processing for demo");
+    // Optionally process the call asynchronously
+    // setImmediate(() => processCall(newCall, file));
 
     return successResponse(
-      res, 
-      { 
-        id: demoCall.id,
-        status: "pending",
+      res,
+      {
+        id: newCall._id,
+        status: newCall.status,
         message: "File uploaded successfully to S3",
         s3Location: file.location,
         s3Key: file.key,
         fileSize: `${(file.size / 1024 / 1024).toFixed(2)}MB`
-      }, 
+      },
       "Call uploaded successfully to cloud storage"
     );
   } catch (error) {
@@ -72,12 +73,10 @@ uploadCall = async (req, res) => {
 
 reanalyzeCall = async (req, res) => {
   const callId = req.params.id;
-
-  const call = await CallRepo.findByPk(callId);
+  const call = await Call.findById(callId);
   if (!call) {
     return errorResponse(res, "Call not found", 400);
   }
-
   if (!["failed", "pending"].includes(call.status)) {
     return errorResponse(
       res,
@@ -85,17 +84,15 @@ reanalyzeCall = async (req, res) => {
       400
     );
   }
-
-  await call.update({ status: "processing" });
-
+  call.status = "processing";
+  await call.save();
   setImmediate(() => processCall(call));
-
   return successResponse(res, call, "Call reanalysis started successfully");
 };
 
 downloadDecryptedAudio = async (req, res) => {
   const { id } = req.params;
-  const call = await CallRepo.findByPk(id);
+  const call = await Call.findById(id);
   if (!call) return errorResponse(res, "Call not found", 404);
 
   // 1) Ensure temp folder exists

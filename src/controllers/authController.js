@@ -2,15 +2,14 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const { Op } = require("sequelize");
-const db = require("../../models/index.js");
 const constants = require("../utils/constants.js");
-const UserRepo = require("../repos/UserRepo.js");
 const { jwtSecret } = require("../../config/config.js");
 const {
   successResponse,
   errorResponse,
   validationErrorResponse,
 } = require("./baseController.js");
+const User = require("../../models/user.js");
 
 signToken = (userResponse) => {
   return jwt.sign({ data: userResponse }, jwtSecret, {
@@ -19,33 +18,25 @@ signToken = (userResponse) => {
 };
 
 loginUser = async (req, res) => {
-
   const { email, password } = req.body;
 
   if (!email || !password) {
     return validationErrorResponse(res, "Email and password are required");
   }
 
-  const customQuery = {
-    where: { email },
-
-  };
-
-  const user = await UserRepo?.findUserWithInclude(customQuery);
+  const user = await User.findOne({ email });
 
   if (!user) {
     return errorResponse(res, "Invalid credentials", 400);
   }
 
-  const passwordMatch = await bcrypt.compare(password, user?.password);
+  const passwordMatch = await bcrypt.compare(password, user.password);
 
   if (!passwordMatch) {
     return errorResponse(res, "Invalid credentials", 400);
   }
 
   user.password = undefined;
-  user.resetPasswordToken = undefined;
-  user.resetPasswordExpires = undefined;
 
   let token = signToken(user);
 
@@ -53,42 +44,35 @@ loginUser = async (req, res) => {
 };
 
 signupUser = async (req, res) => {
+  const { name, email, password, role } = req.body;
 
-  const { name,email, password,role } = req.body;
-
-  const customQuery = {
-    where: { email },
-  };
-
-  const user = await UserRepo?.findUserWithInclude(customQuery);
-
-  if (user) {
-    return errorResponse(res, "User already exists", 400);
+  if (!name || !email || !password) {
+    return validationErrorResponse(
+      res,
+      "Name, email, and password are required"
+    );
   }
 
-  const hashedPassword = await bcrypt.hash(
-    password,
-    Number(process.env.SALT_ROUNDS)
-  );
+  const existingUser = await User.findOne({ email });
 
-  const newUser = await UserRepo?.createUser({
+  if (existingUser) {
+    return errorResponse(res, "Email already registered", 400);
+  }
+
+  const hashedPassword = await bcrypt.hash(password, 10);
+
+  const user = await User.create({
     name,
     email,
     password: hashedPassword,
     role,
   });
 
-  newUser.password = undefined;
-  newUser.resetPasswordToken = undefined;
-  newUser.resetPasswordExpires = undefined;
+  user.password = undefined;
 
-  let token = signToken(newUser);
+  let token = signToken(user);
 
-  return successResponse(
-    res,
-    { user: newUser, token },
-    "signup Successful"
-  );
+  return successResponse(res, { user, token }, "Signup successful");
 };
 
 changePassword = async (req, res) => {
@@ -109,11 +93,7 @@ changePassword = async (req, res) => {
     );
   }
 
-  const customQuery = {
-    email
-  };
-
-  const user = await UserRepo?.findUserWithInclude(customQuery);
+  const user = await User.findOne({ email });
 
   if (!user) {
     return errorResponse(res, "User not found", 200);
@@ -130,20 +110,11 @@ changePassword = async (req, res) => {
     Number(process.env.SALT_ROUNDS)
   );
 
-  const updatedUser = await UserRepo?.updateUser(
-    { password: hashedPassword },
-    user?.id
-  );
+  user.password = hashedPassword;
 
-  user.isNewUser = false;
+  await user.save();
 
-  const userObject = updatedUser.toJSON();
-
-  delete userObject.password;
-  delete userObject.resetPasswordToken;
-  delete userObject.resetPasswordExpires;
-
-  return successResponse(res, userObject, "Password changed successfully");
+  return successResponse(res, {}, "Password changed successfully");
 };
 
 forgetPassword = async (req, res) => {
@@ -153,11 +124,7 @@ forgetPassword = async (req, res) => {
     return validationErrorResponse(res, "Email is required");
   }
 
-  const customQuery = {
-    where: { email },
-  };
-
-  const user = await UserRepo?.findUserWithInclude(customQuery);
+  const user = await User.findOne({ email });
 
   if (!user) {
     return errorResponse(res, "User not found", 200);
@@ -185,10 +152,7 @@ resetPasswordWithToken = async (req, res) => {
   const { newPassword } = req.body;
 
   if (!token || !newPassword) {
-    return validationErrorResponse(
-      res,
-      "Token and new password are required"
-    );
+    return validationErrorResponse(res, "Token and new password are required");
   }
 
   const encryptedToken = crypto
@@ -196,14 +160,12 @@ resetPasswordWithToken = async (req, res) => {
     .update(token)
     .digest("hex");
 
-  const customQuery = {
+  const user = await User.findOne({
     resetPasswordToken: encryptedToken,
     resetPasswordExpires: {
       [Op.gt]: Date.now(),
     },
-  };
-
-  const user = await UserRepo?.findUser(customQuery);
+  });
 
   if (!user || user?.resetPasswordExpires < Date.now()) {
     return errorResponse(res, "Token is invalid or has expired", 400);
@@ -219,7 +181,6 @@ resetPasswordWithToken = async (req, res) => {
   user.resetPasswordExpires = null;
 
   await user?.save();
-  await UserRepo?.updateUser({ isNewUser: false }, user?.id);
 
   return successResponse(res, {}, "Password reset successfully");
 };
