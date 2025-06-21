@@ -16,24 +16,6 @@ function signToken(userResponse) {
   });
 }
 
-async function loginUser(req, res) {
-  const { email, password } = req.body;
-  if (!email || !password) {
-    return validationErrorResponse(res, "Email and password are required");
-  }
-  const user = await User.findOne({ email });
-  if (!user) {
-    return errorResponse(res, "Invalid credentials", 400);
-  }
-  const passwordMatch = await bcrypt.compare(password, user.password);
-  if (!passwordMatch) {
-    return errorResponse(res, "Invalid credentials", 400);
-  }
-  user.password = undefined;
-  let token = signToken(user);
-  return successResponse(res, { user, token }, "login Successful");
-}
-
 async function signupUser(req, res) {
   const { name, email, password, role } = req.body;
   if (!name || !email || !password) {
@@ -56,6 +38,24 @@ async function signupUser(req, res) {
   user.password = undefined;
   let token = signToken(user);
   return successResponse(res, { user, token }, "Signup successful");
+}
+
+async function loginUser(req, res) {
+  const { email, password } = req.body;
+  if (!email || !password) {
+    return validationErrorResponse(res, "Email and password are required");
+  }
+  const user = await User.findOne({ email });
+  if (!user) {
+    return errorResponse(res, "Invalid credentials", 400);
+  }
+  const passwordMatch = await bcrypt.compare(password, user.password);
+  if (!passwordMatch) {
+    return errorResponse(res, "Invalid credentials", 400);
+  }
+  user.password = undefined;
+  let token = signToken(user);
+  return successResponse(res, { user, token }, "login Successful");
 }
 
 async function changePassword(req, res) {
