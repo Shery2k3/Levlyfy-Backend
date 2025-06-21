@@ -4,8 +4,12 @@ const bodyParser = require("body-parser");
 const dotenv = require("dotenv");
 const routes = require("./routes/routes.js");
 const errorMiddleware = require("./middleware/error.middleware.js");
+const connectDB = require("../config/mongo.js");
 
 dotenv.config();
+
+// Connect to MongoDB before starting the app
+connectDB();
 
 const app = express();
 
