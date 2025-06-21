@@ -3,7 +3,7 @@ const {
   errorResponse,
   validationErrorResponse,
   serverErrorResponse,
-} = require("./baseController.js");
+} = require("../utils/response.js");
 const { transcribeAudio } = require("../services/whisperService");
 const processCall = require("../jobs/processCall.js");
 const path = require("path");
@@ -17,21 +17,17 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-uploadCall = async (req, res) => {
+async function uploadCall(req, res) {
   try {
-    // For demo - skip authentication
-    const userId = req.user?._id || req.body.userId || null; // Use real userId if available
+    const userId = req.user?._id || req.body.userId || null;
     const { callNotes } = req?.body || {};
     const file = req.file;
-
-    // Validate file existence
     if (!file) {
       return validationErrorResponse(res, "Please upload an audio file");
     }
     if (!userId) {
       return validationErrorResponse(res, "User ID is required");
     }
-
     console.log("📁 S3 File received:", {
       originalName: file.originalname,
       size: `${(file.size / 1024 / 1024).toFixed(2)}MB`,
@@ -39,8 +35,6 @@ uploadCall = async (req, res) => {
       s3Location: file.location,
       s3Key: file.key
     });
-
-    // Save call to MongoDB
     const newCall = await Call.create({
       userId,
       status: "pending",
@@ -49,10 +43,6 @@ uploadCall = async (req, res) => {
       callDate: new Date(),
       callNotes: callNotes || "",
     });
-
-    // Optionally process the call asynchronously
-    // setImmediate(() => processCall(newCall, file));
-
     return successResponse(
       res,
       {
@@ -71,7 +61,7 @@ uploadCall = async (req, res) => {
   }
 };
 
-reanalyzeCall = async (req, res) => {
+async function reanalyzeCall(req, res) {
   const callId = req.params.id;
   const call = await Call.findById(callId);
   if (!call) {
@@ -90,48 +80,35 @@ reanalyzeCall = async (req, res) => {
   return successResponse(res, call, "Call reanalysis started successfully");
 };
 
-downloadDecryptedAudio = async (req, res) => {
+async function downloadDecryptedAudio(req, res) {
   const { id } = req.params;
   const call = await Call.findById(id);
   if (!call) return errorResponse(res, "Call not found", 404);
-
-  // 1) Ensure temp folder exists
   const tempDir = path.resolve("temp");
   if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir);
-
-  // 2) Define paths
   const encryptedPath = path.resolve(call.audioUrl);
   const decryptedName = `dec-${Date.now()}-${path.basename(call.audioUrl)}`;
   const decryptedPath = path.join(tempDir, decryptedName);
-
-  // 3) Decrypt (sync version)
   try {
     await decryptFile(encryptedPath, decryptedPath);
   } catch (err) {
     console.error("Decrypt error:", err);
     return serverErrorResponse(res, "Could not decrypt file", 500);
   }
-
-  // 4) Verify file exists
   if (!fs.existsSync(decryptedPath)) {
     return serverErrorResponse(res, "Decrypted file not found", 500);
   }
-
-  // 5) Send it
   res.download(decryptedPath, decryptedName, (err) => {
     if (err) {
       console.error("Download error:", err);
       return serverErrorResponse(res, "Could not send file", 500);
     }
-    // clean up
     fs.unlinkSync(decryptedPath);
   });
 };
 
-testController = async(req,res) => {
-
+async function testController(req, res) {
   const prompt = "generate me a counting from 1 to 10.";
-
   const response = await openai.chat.completions.create({
     model: "gpt-4",
     messages: [
@@ -139,15 +116,14 @@ testController = async(req,res) => {
     ],
     temperature: 0.5,
     max_tokens: 1000,
-  })
-
+  });
   const content = response.choices[0].message.content;
-
   return successResponse(res, content, "Test successful");
-}
+};
 
 module.exports = {
   uploadCall,
   reanalyzeCall,
   downloadDecryptedAudio,
+  testController,
 };
