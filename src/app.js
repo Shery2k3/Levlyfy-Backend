@@ -4,7 +4,7 @@ const bodyParser = require("body-parser");
 const dotenv = require("dotenv");
 const routes = require("./routes/routes.js");
 const errorMiddleware = require("./middleware/error.middleware.js");
-const connectDB = require("../config/mongo.js");
+const connectDB = require("../config/db.js");
 
 dotenv.config();
 
