@@ -5,7 +5,7 @@ const {
   successResponse,
   errorResponse,
   validationErrorResponse,
-} = require("./baseController.js");
+} = require("./../utils/response.js");
 
 getLeaderboard = async (req, res) => {
   const topAgents = await PerformanceRepo.findAll({

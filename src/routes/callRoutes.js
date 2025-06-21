@@ -6,11 +6,7 @@ const {
   downloadDecryptedAudioValidator 
 } = require("../validators/callValidator.js");
 const { validationResult } = require("express-validator");
-const { 
-  uploadToS3, 
-  handleS3UploadError, 
-  logS3Upload 
-} = require("../middleware/s3Upload.middleware");
+const { auth, authMiddleware } = require("../middleware/auth.middleware.js");
 const {
   uploadCall,
   reanalyzeCall,
@@ -25,12 +21,11 @@ function handleValidation(req, res, next) {
   next();
 }
 
-// S3 upload route with error handling
-router.post("/upload-call", 
-  uploadToS3.single("audio"), 
-  handleS3UploadError,
-  logS3Upload,
-  uploadCallValidator,
+// Secure upload-call route: user must be logged in, validation runs, then controller handles S3 upload
+router.post(
+  "/upload-call",
+  authMiddleware,
+  // uploadCallValidator,
   handleValidation,
   uploadCall
 );

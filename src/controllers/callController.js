@@ -11,6 +11,7 @@ const fs = require("fs");
 const { decryptFile } = require("../utils/fileEncryption.js");
 const { OpenAI } = require("openai");
 const Call = require("../../models/call.js");
+const { uploadToS3 } = require("../middleware/s3Upload.middleware.js");
 require("dotenv").config();
 
 const openai = new OpenAI({
@@ -19,42 +20,50 @@ const openai = new OpenAI({
 
 async function uploadCall(req, res) {
   try {
-    const userId = req.user?._id || req.body.userId || null;
-    const { callNotes } = req?.body || {};
-    const file = req.file;
-    if (!file) {
-      return validationErrorResponse(res, "Please upload an audio file");
-    }
+    // User is authenticated, get userId from token
+    const userId = req.user?._id;
+    console.log("User ID from token:", userId);
     if (!userId) {
-      return validationErrorResponse(res, "User ID is required");
+      return validationErrorResponse(res, "User authentication failed");
     }
-    console.log("📁 S3 File received:", {
-      originalName: file.originalname,
-      size: `${(file.size / 1024 / 1024).toFixed(2)}MB`,
-      mimeType: file.mimetype,
-      s3Location: file.location,
-      s3Key: file.key
-    });
+    // 1. Create Call document (pending, no audioUrl yet)
+    const { callNotes } = req.body || {};
     const newCall = await Call.create({
       userId,
       status: "pending",
-      audioUrl: file.location,
-      s3Key: file.key,
-      callDate: new Date(),
       callNotes: callNotes || "",
+      // audioUrl, s3Key, etc. will be added after S3 upload
     });
-    return successResponse(
-      res,
-      {
-        id: newCall._id,
-        status: newCall.status,
-        message: "File uploaded successfully to S3",
-        s3Location: file.location,
-        s3Key: file.key,
-        fileSize: `${(file.size / 1024 / 1024).toFixed(2)}MB`
-      },
-      "Call uploaded successfully to cloud storage"
-    );
+    // 2. Upload file to S3
+    uploadToS3.single("audio")(req, res, async function (err) {
+      if (err) {
+        // S3 upload failed, delete the Call document
+        await Call.findByIdAndDelete(newCall._id);
+        return errorResponse(res, err.message || "Failed to upload file to S3", 500);
+      }
+      const file = req.file;
+      if (!file) {
+        await Call.findByIdAndDelete(newCall._id);
+        return validationErrorResponse(res, "No audio file provided");
+      }
+      // 3. Update Call document with S3 info
+      newCall.audioUrl = file.location;
+      newCall.s3Key = file.key;
+      newCall.status = "uploaded";
+      await newCall.save();
+      return successResponse(
+        res,
+        {
+          id: newCall._id,
+          status: newCall.status,
+          message: "File uploaded successfully to S3",
+          s3Location: file.location,
+          s3Key: file.key,
+          fileSize: `${(file.size / 1024 / 1024).toFixed(2)}MB`
+        },
+        "Call uploaded successfully to cloud storage"
+      );
+    });
   } catch (error) {
     console.error("Error in uploadCall controller:", error);
     return errorResponse(res, error.message || "Failed to upload call", 500);

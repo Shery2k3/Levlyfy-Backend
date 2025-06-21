@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 
 const callSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  audioUrl: { type: String, required: true }, // S3 bucket link
+  audioUrl: { type: String }, // S3 bucket link
   transcript: { type: String },
   sentiment: { type: String },
   score: { type: Number }, // Metrics from Whisper/GPT

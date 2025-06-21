@@ -6,10 +6,7 @@ const mongoURI = process.env.MONGO_URI || "mongodb://localhost:27017/levlyfy";
 
 const connectDB = async () => {
   try {
-    const connection = await mongoose.connect(mongoURI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
+    const connection = await mongoose.connect(mongoURI);
     console.log(
       `Connected to ${connection.connection.name} at ${connection.connection.host}`
         .yellow.bold

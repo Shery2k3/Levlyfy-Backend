@@ -29,6 +29,29 @@ const authMiddleware = (req, res, next) => {
   });
 };
 
+// const auth = async (req, res, next) => {
+//   try {
+//     const authHeader = c.req.header("Authorization")
+//     if (!authHeader || !authHeader.startsWith("Bearer ")) {
+//       return errorResponse(c, 401, "Unauthorized: No token provided");
+//     }
+
+//     const token = authHeader.split(" ")[1];
+//     const decoded = await verify(token, jwtSecret);
+
+//     const user = await user.findById(decoded.id).select("-password");
+//     if (!user) {
+//       return errorResponse(c, 401, "Unauthorized: Invalid token");
+//     }
+
+//     c.set("user", user);
+//     await next();
+
+//   } catch (error) {
+//     console.error(error);
+//     return errorResponse(c, 401, "Unauthorized: Invalid token");
+//   }
+// };
 
 const isAdmin = (req, res, next) => {
   if (req.user.role.toLowerCase() !== "admin") {
