@@ -29,47 +29,40 @@ uploadCall = async (req, res) => {
       return validationErrorResponse(res, "Please upload an audio file");
     }
 
-    // Validate file type (optional but recommended)
-    const allowedTypes = ['audio/mpeg', 'audio/mp4', 'audio/wav', 'audio/ogg', 'video/mp4'];
-    const mimeType = file.mimetype;
-    
-    if (!allowedTypes.includes(mimeType)) {
-      return validationErrorResponse(
-        res, 
-        `Unsupported file type: ${mimeType}. Please upload mp3, mp4, wav, or ogg files.`
-      );
-    }
-
-    // Validate file size (optional but recommended, e.g., 25MB limit)
-    const MAX_SIZE = 25 * 1024 * 1024; // 25MB
-    if (file.size > MAX_SIZE) {
-      return validationErrorResponse(
-        res,
-        `File too large. Maximum size is ${MAX_SIZE / (1024 * 1024)}MB`
-      );
-    }
+    console.log("📁 S3 File received:", {
+      originalName: file.originalname,
+      size: `${(file.size / 1024 / 1024).toFixed(2)}MB`,
+      mimeType: file.mimetype,
+      s3Location: file.location,
+      s3Key: file.key
+    });
 
     // Create a demo call object (skip database for demo)
     const demoCall = {
       id: Date.now(), // Use timestamp as fake ID
+      userId,
       status: "pending",
-      audioUrl: file.path,
+      audioUrl: file.location, // S3 file URL
+      s3Key: file.key, // S3 file key for future operations
       callDate: new Date(),
       callNotes: callNotes || "",
     };
 
-    // Process the call asynchronously
-    setImmediate(() => processCall(demoCall, file));
+    // Process the call asynchronously (skip for demo)
+    // setImmediate(() => processCall(demoCall, file));
+    // console.log("⏭️ Skipping background processing for demo");
 
     return successResponse(
       res, 
       { 
         id: demoCall.id,
         status: "pending",
-        message: "File uploaded successfully for demo",
-        filePath: file.path
+        message: "File uploaded successfully to S3",
+        s3Location: file.location,
+        s3Key: file.key,
+        fileSize: `${(file.size / 1024 / 1024).toFixed(2)}MB`
       }, 
-      "Call uploaded successfully and queued for processing"
+      "Call uploaded successfully to cloud storage"
     );
   } catch (error) {
     console.error("Error in uploadCall controller:", error);
