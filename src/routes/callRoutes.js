@@ -16,6 +16,7 @@ const {
   testTranscription,
   analyzeCallComplete,
   getAllUserCalls,
+  getCallStatus,
 } = require("../controllers/callController");
 
 function handleValidation(req, res, next) {
@@ -45,10 +46,12 @@ router.post("/test-transcription", authMiddleware, testTranscription);
 
 // Complete analysis route: transcribe + analyze
 router.post("/analyze-complete/:callId", authMiddleware, analyzeCallComplete);
-router.post("/analyze-complete", authMiddleware, analyzeCallComplete);
 
 // Get all calls for authenticated user
 router.get("/my-calls", authMiddleware, getAllUserCalls);
+
+// Get call processing status
+router.get("/status/:callId", authMiddleware, getCallStatus);
 
 // Comment out other routes that need database/auth
 // router.post("/:id/reanalyze", reanalyzeCallValidator, handleValidation, reanalyzeCall);

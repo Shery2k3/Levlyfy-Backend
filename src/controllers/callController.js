@@ -5,14 +5,13 @@ const {
   serverErrorResponse,
 } = require("../utils/response.js");
 const { transcribeAudio } = require("../services/whisperService");
-const processCall = require("../jobs/processCall.js");
+const CallProcessingService = require("../services/callProcessingService");
 const path = require("path");
 const fs = require("fs");
 const { decryptFile } = require("../utils/fileEncryption.js");
 const { OpenAI } = require("openai");
 const Call = require("../../models/call.js");
 const {
-  uploadToS3,
   deleteFromS3,
 } = require("../middleware/upload.middleware.js");
 const { analyzeCall } = require("../services/gptService.js");
@@ -55,17 +54,22 @@ async function uploadCall(req, res) {
       s3Key: file.key, // Save the S3 key as well
     });
 
+    // 🚀 Trigger background processing (transcription + analysis)
+    console.log(`🔄 Starting background processing for call ${newCall._id}`);
+    CallProcessingService.processCallInBackground(newCall._id.toString());
+
     return successResponse(
       res,
       {
         id: newCall._id,
         status: newCall.status,
-        message: "File uploaded successfully to S3",
+        message: "File uploaded successfully and processing started",
         s3Location: file.location,
         s3Key: file.key,
         fileSize: `${(file.size / 1024 / 1024).toFixed(2)}MB`,
+        processingStatus: "Background processing initiated"
       },
-      "Call uploaded successfully to cloud storage"
+      "Call uploaded successfully - transcription and analysis in progress"
     );
   } catch (error) {
     // If DB save fails, delete the S3 file to avoid orphaned files
@@ -320,7 +324,7 @@ async function getAllUserCalls(req, res) {
     // Get all calls for the user
     const calls = await Call.find({ userId })
       .sort({ createdAt: -1 }) // Most recent first
-      .select('_id status transcript sentiment score feedback summary callNotes audioUrl s3Key createdAt updatedAt');
+      .select('_id status transcript sentiment score feedback summary callNotes audioUrl s3Key errorMessage createdAt updatedAt');
 
     return successResponse(
       res,
@@ -344,6 +348,28 @@ async function getAllUserCalls(req, res) {
   }
 }
 
+async function getCallStatus(req, res) {
+  try {
+    const callId = req.params.callId || req.body.callId;
+    
+    if (!callId) {
+      return validationErrorResponse(res, "Call ID is required");
+    }
+
+    const status = await CallProcessingService.getCallStatus(callId);
+    
+    return successResponse(
+      res,
+      status,
+      "Call status retrieved successfully"
+    );
+
+  } catch (error) {
+    console.error("Get call status error:", error);
+    return errorResponse(res, error.message || "Failed to get call status", 500);
+  }
+}
+
 module.exports = {
   uploadCall,
   reanalyzeCall,
@@ -352,4 +378,5 @@ module.exports = {
   testTranscription,
   analyzeCallComplete,
   getAllUserCalls,
+  getCallStatus,
 };

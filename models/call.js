@@ -16,6 +16,7 @@ const callSchema = new mongoose.Schema({
     enum: ['uploaded', 'processing', 'transcribed', 'analyzed', 'failed'], 
     default: 'uploaded' 
   },
+  errorMessage: { type: String }, // Store error message if processing fails
   // Add more fields as needed for gamification/analytics
 }, { timestamps: true });
 
