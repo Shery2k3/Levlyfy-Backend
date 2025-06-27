@@ -145,8 +145,9 @@ async function testgpt(req, res) {
 
 async function testTranscription(req, res) {
   try {
-    const { callId } = req.params;
-
+    // Accept callId from either URL params or request body
+    const callId = req.params.callId || req.body.callId;
+    
     if (!callId) {
       return validationErrorResponse(res, "Call ID is required");
     }
@@ -164,21 +165,23 @@ async function testTranscription(req, res) {
     console.log(`🎯 Testing transcription for call ${callId}`);
     console.log(`📁 S3 Key: ${call.s3Key}`);
 
-    // Transcribe the audio from S3
+    // Update call status to processing
+    await Call.findByIdAndUpdate(callId, { status: "processing" });
+
+    // Transcribe the audio from S3 using the optimized method
+    const startTime = Date.now();
     const transcript = await transcribeAudio(call.s3Key, true);
+    const processingTime = Date.now() - startTime;
 
     if (!transcript || transcript.trim() === "") {
-      return errorResponse(
-        res,
-        "Failed to transcribe audio - empty result",
-        500
-      );
+      await Call.findByIdAndUpdate(callId, { status: "failed" });
+      return errorResponse(res, "Failed to transcribe audio - empty result", 500);
     }
 
-    // Optionally save transcript to database
-    await Call.findByIdAndUpdate(callId, {
+    // Save transcript to database and update status
+    await Call.findByIdAndUpdate(callId, { 
       transcript,
-      status: "transcribed",
+      status: "transcribed"
     });
 
     return successResponse(
@@ -187,17 +190,157 @@ async function testTranscription(req, res) {
         callId,
         transcript,
         transcriptLength: transcript.length,
-        wordCount: transcript.split(" ").length,
+        wordCount: transcript.split(' ').length,
+        processingTimeMs: processingTime,
+        method: "Direct S3 URL (optimized)"
       },
       "Audio transcribed successfully"
     );
+
   } catch (error) {
     console.error("Test transcription error:", error);
-    return errorResponse(
-      res,
-      error.message || "Failed to transcribe audio",
-      500
+    
+    // Update call status to failed if we have a callId
+    const callId = req.params.callId || req.body.callId;
+    if (callId) {
+      await Call.findByIdAndUpdate(callId, { status: "failed" }).catch(console.error);
+    }
+    
+    return errorResponse(res, error.message || "Failed to transcribe audio", 500);
+  }
+}
+
+async function analyzeCallComplete(req, res) {
+  try {
+    // Accept callId from either URL params or request body
+    const callId = req.params.callId || req.body.callId;
+    
+    if (!callId) {
+      return validationErrorResponse(res, "Call ID is required");
+    }
+
+    // Find the call in database
+    const call = await Call.findById(callId);
+    if (!call) {
+      return errorResponse(res, "Call not found", 404);
+    }
+
+    if (!call.s3Key) {
+      return errorResponse(res, "No audio file found for this call", 400);
+    }
+
+    console.log(`🎯 Starting complete analysis for call ${callId}`);
+    console.log(`📁 S3 Key: ${call.s3Key}`);
+
+    // Update call status to processing
+    await Call.findByIdAndUpdate(callId, { status: "processing" });
+
+    const startTime = Date.now();
+
+    // Step 1: Transcribe the audio
+    console.log("🎙️ Step 1: Transcribing audio...");
+    const transcript = await transcribeAudio(call.s3Key, true);
+
+    if (!transcript || transcript.trim() === "") {
+      await Call.findByIdAndUpdate(callId, { status: "failed" });
+      return errorResponse(res, "Failed to transcribe audio - empty result", 500);
+    }
+
+    const transcriptionTime = Date.now() - startTime;
+    console.log(`✅ Transcription completed in ${transcriptionTime}ms`);
+
+    // Step 2: Analyze the transcript
+    console.log("🧠 Step 2: Analyzing transcript...");
+    const analysisStartTime = Date.now();
+    const analysis = await analyzeCall(transcript);
+    const analysisTime = Date.now() - analysisStartTime;
+    
+    console.log(`✅ Analysis completed in ${analysisTime}ms`);
+
+    const totalTime = Date.now() - startTime;
+
+    // Step 3: Save everything to database
+    const updatedCall = await Call.findByIdAndUpdate(
+      callId, 
+      { 
+        transcript,
+        sentiment: analysis.sentiment,
+        score: analysis.score,
+        feedback: analysis.feedback,
+        summary: analysis.summary,
+        status: "analyzed"
+      },
+      { new: true }
     );
+
+    return successResponse(
+      res,
+      {
+        callId,
+        transcript,
+        analysis: {
+          sentiment: analysis.sentiment,
+          score: analysis.score,
+          feedback: analysis.feedback,
+          summary: analysis.summary
+        },
+        performance: {
+          transcriptionTimeMs: transcriptionTime,
+          analysisTimeMs: analysisTime,
+          totalTimeMs: totalTime,
+          transcriptLength: transcript.length,
+          wordCount: transcript.split(' ').length
+        },
+        updatedCall
+      },
+      "Call transcribed and analyzed successfully"
+    );
+
+  } catch (error) {
+    console.error("Complete analysis error:", error);
+    
+    // Update call status to failed if we have a callId
+    const callId = req.params.callId || req.body.callId;
+    if (callId) {
+      await Call.findByIdAndUpdate(callId, { status: "failed" }).catch(console.error);
+    }
+    
+    return errorResponse(res, error.message || "Failed to analyze call", 500);
+  }
+}
+
+async function getAllUserCalls(req, res) {
+  try {
+    const userId = req.user?._id;
+    
+    if (!userId) {
+      return validationErrorResponse(res, "User authentication failed");
+    }
+
+    // Get all calls for the user
+    const calls = await Call.find({ userId })
+      .sort({ createdAt: -1 }) // Most recent first
+      .select('_id status transcript sentiment score feedback summary callNotes audioUrl s3Key createdAt updatedAt');
+
+    return successResponse(
+      res,
+      {
+        calls,
+        totalCalls: calls.length,
+        callsByStatus: {
+          uploaded: calls.filter(call => call.status === 'uploaded').length,
+          processing: calls.filter(call => call.status === 'processing').length,
+          transcribed: calls.filter(call => call.status === 'transcribed').length,
+          analyzed: calls.filter(call => call.status === 'analyzed').length,
+          failed: calls.filter(call => call.status === 'failed').length,
+        }
+      },
+      "User calls retrieved successfully"
+    );
+
+  } catch (error) {
+    console.error("Get user calls error:", error);
+    return errorResponse(res, error.message || "Failed to retrieve calls", 500);
   }
 }
 
@@ -207,4 +350,6 @@ module.exports = {
   downloadDecryptedAudio,
   testgpt,
   testTranscription,
+  analyzeCallComplete,
+  getAllUserCalls,
 };

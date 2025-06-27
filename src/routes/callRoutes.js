@@ -14,6 +14,8 @@ const {
   downloadDecryptedAudio,
   testgpt,
   testTranscription,
+  analyzeCallComplete,
+  getAllUserCalls,
 } = require("../controllers/callController");
 
 function handleValidation(req, res, next) {
@@ -37,6 +39,16 @@ router.post(
 router.post("/testgpt", testgpt);
 
 router.post("/transcribe/:callId", authMiddleware, testTranscription);
+
+// New route for testing transcription with just callId
+router.post("/test-transcription", authMiddleware, testTranscription);
+
+// Complete analysis route: transcribe + analyze
+router.post("/analyze-complete/:callId", authMiddleware, analyzeCallComplete);
+router.post("/analyze-complete", authMiddleware, analyzeCallComplete);
+
+// Get all calls for authenticated user
+router.get("/my-calls", authMiddleware, getAllUserCalls);
 
 // Comment out other routes that need database/auth
 // router.post("/:id/reanalyze", reanalyzeCallValidator, handleValidation, reanalyzeCall);
