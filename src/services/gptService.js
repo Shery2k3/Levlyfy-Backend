@@ -35,7 +35,7 @@ Return ONLY valid JSON with this exact structure:
     const startTime = Date.now();
 
     const response = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo", // Much faster than gpt-4, ~10x speed improvement
+      model: "gpt-4", // Much faster than gpt-4, ~10x speed improvement
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
@@ -105,7 +105,7 @@ Return ONLY valid JSON with this exact structure:
 const analyzeSentiment = async (transcript) => {
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
+      model: "gpt-4",
       messages: [
         {
           role: "system",
