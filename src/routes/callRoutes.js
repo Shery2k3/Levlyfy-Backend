@@ -7,6 +7,7 @@ const {
 } = require("../validators/callValidator.js");
 const { validationResult } = require("express-validator");
 const { auth, authMiddleware } = require("../middleware/auth.middleware.js");
+const { uploadToS3 } = require("../middleware/upload.middleware.js");
 const {
   uploadCall,
   reanalyzeCall,
@@ -22,13 +23,14 @@ function handleValidation(req, res, next) {
   next();
 }
 
-// Secure upload-call route: user must be logged in, validation runs, then controller handles S3 upload
+// Secure upload-call route: middleware chain approach
 router.post(
   "/upload-call",
-  authMiddleware,
-  // uploadCallValidator,
-  handleValidation,
-  uploadCall
+  authMiddleware,                    // 1. Check authentication
+  uploadToS3.single("audio"),        // 2. Upload file to S3
+  // uploadCallValidator,             // 3. Validate (if needed)
+  handleValidation,                  // 4. Handle validation errors
+  uploadCall                         // 5. Save to database
 );
 
 router.post("/testgpt", testgpt)

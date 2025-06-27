@@ -27,56 +27,55 @@ async function uploadCall(req, res) {
     // User is authenticated, get userId from token
     const userId = req.user?._id;
     console.log("User ID from token:", userId);
+    
     if (!userId) {
       return validationErrorResponse(res, "User authentication failed");
     }
-    // 1. Upload file to S3
-    uploadToS3.single("audio")(req, res, async function (err) {
-      if (err) {
-        return errorResponse(
-          res,
-          err.message || "Failed to upload file to S3",
-          500
-        );
-      }
-      const file = req.file;
-      if (!file) {
-        return validationErrorResponse(res, "No audio file provided");
-      }
-      // 2. Create Call document with S3 info
-      const { callNotes } = req.body || {};
-      try {
-        const newCall = await Call.create({
-          userId,
-          status: "uploaded",
-          callNotes: callNotes || "",
-          audioUrl: file.location,
-          s3Key: file.key,
-        });
-        return successResponse(
-          res,
-          {
-            id: newCall._id,
-            status: newCall.status,
-            message: "File uploaded successfully to S3",
-            s3Location: file.location,
-            s3Key: file.key,
-            fileSize: `${(file.size / 1024 / 1024).toFixed(2)}MB`,
-          },
-          "Call uploaded successfully to cloud storage"
-        );
-      } catch (dbError) {
-        // If DB save fails, delete the S3 file to avoid orphaned files
-        deleteFromS3(file.key).catch((deleteError) => {
-          console.error(
-            "Failed to delete S3 file after DB error:",
-            deleteError
-          );
-        });
-        console.error("DB save error:", dbError);
-      }
+
+    // File has already been uploaded to S3 by multer middleware
+    const file = req.file;
+    if (!file) {
+      return validationErrorResponse(res, "No audio file provided");
+    }
+
+    console.log("File uploaded to S3:", {
+      location: file.location,
+      key: file.key,
+      size: file.size
     });
+
+    // Create Call document with S3 info
+    const { callNotes } = req.body || {};
+    
+    const newCall = await Call.create({
+      userId,
+      status: "uploaded",
+      callNotes: callNotes || "",
+      audioUrl: file.location,
+      s3Key: file.key,
+    });
+
+    return successResponse(
+      res,
+      {
+        id: newCall._id,
+        status: newCall.status,
+        message: "File uploaded successfully to S3",
+        s3Location: file.location,
+        s3Key: file.key,
+        fileSize: `${(file.size / 1024 / 1024).toFixed(2)}MB`,
+      },
+      "Call uploaded successfully to cloud storage"
+    );
+
   } catch (error) {
+    // If DB save fails, delete the S3 file to avoid orphaned files
+    if (req.file?.key) {
+      deleteFromS3(req.file.key).catch((deleteError) => {
+        console.error("Failed to delete S3 file after DB error:", deleteError);
+      });
+    }
+    
     console.error("Error in uploadCall controller:", error);
     return errorResponse(res, error.message || "Failed to upload call", 500);
   }
