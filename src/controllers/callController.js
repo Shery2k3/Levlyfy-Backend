@@ -11,7 +11,11 @@ const fs = require("fs");
 const { decryptFile } = require("../utils/fileEncryption.js");
 const { OpenAI } = require("openai");
 const Call = require("../../models/call.js");
-const { uploadToS3, deleteFromS3 } = require("../middleware/upload.middleware.js");
+const {
+  uploadToS3,
+  deleteFromS3,
+} = require("../middleware/upload.middleware.js");
+const { analyzeCall } = require("../services/gptService.js");
 require("dotenv").config();
 
 const openai = new OpenAI({
@@ -29,7 +33,11 @@ async function uploadCall(req, res) {
     // 1. Upload file to S3
     uploadToS3.single("audio")(req, res, async function (err) {
       if (err) {
-        return errorResponse(res, err.message || "Failed to upload file to S3", 500);
+        return errorResponse(
+          res,
+          err.message || "Failed to upload file to S3",
+          500
+        );
       }
       const file = req.file;
       if (!file) {
@@ -53,14 +61,17 @@ async function uploadCall(req, res) {
             message: "File uploaded successfully to S3",
             s3Location: file.location,
             s3Key: file.key,
-            fileSize: `${(file.size / 1024 / 1024).toFixed(2)}MB`
+            fileSize: `${(file.size / 1024 / 1024).toFixed(2)}MB`,
           },
           "Call uploaded successfully to cloud storage"
         );
       } catch (dbError) {
         // If DB save fails, delete the S3 file to avoid orphaned files
         deleteFromS3(file.key).catch((deleteError) => {
-          console.error("Failed to delete S3 file after DB error:", deleteError);
+          console.error(
+            "Failed to delete S3 file after DB error:",
+            deleteError
+          );
         });
         console.error("DB save error:", dbError);
       }
@@ -69,7 +80,7 @@ async function uploadCall(req, res) {
     console.error("Error in uploadCall controller:", error);
     return errorResponse(res, error.message || "Failed to upload call", 500);
   }
-};
+}
 
 async function reanalyzeCall(req, res) {
   const callId = req.params.id;
@@ -88,7 +99,7 @@ async function reanalyzeCall(req, res) {
   await call.save();
   setImmediate(() => processCall(call));
   return successResponse(res, call, "Call reanalysis started successfully");
-};
+}
 
 async function downloadDecryptedAudio(req, res) {
   const { id } = req.params;
@@ -115,25 +126,28 @@ async function downloadDecryptedAudio(req, res) {
     }
     fs.unlinkSync(decryptedPath);
   });
-};
+}
 
-async function testController(req, res) {
-  const prompt = "generate me a counting from 1 to 10.";
-  const response = await openai.chat.completions.create({
-    model: "gpt-4",
-    messages: [
-      { role: "user", content: prompt }
-    ],
-    temperature: 0.5,
-    max_tokens: 1000,
-  });
-  const content = response.choices[0].message.content;
-  return successResponse(res, content, "Test successful");
-};
+async function testgpt(req, res) {
+  // const transcript = "This is a test call transcript for analysis.";
+  const { transcript } =
+    req.body || "This is a test call transcript for analysis.";
+
+  const response = await analyzeCall(transcript);
+  if (!response) {
+    return errorResponse(res, "Failed to analyze call transcript", 500);
+  }
+
+  return successResponse(
+    res,
+    response,
+    "Call transcript analyzed successfully"
+  );
+}
 
 module.exports = {
   uploadCall,
   reanalyzeCall,
   downloadDecryptedAudio,
-  testController,
+  testgpt,
 };

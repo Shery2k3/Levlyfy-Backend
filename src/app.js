@@ -1,6 +1,5 @@
 const express = require("express");
 const cors = require("cors");
-const bodyParser = require("body-parser");
 const dotenv = require("dotenv");
 const routes = require("./routes/routes.js");
 const errorMiddleware = require("./middleware/error.middleware.js");
@@ -13,21 +12,21 @@ connectDB();
 
 const app = express();
 
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
-
-app.use(bodyParser.urlencoded({ extended: true }));
-app.use(bodyParser.json());
-
+// CORS should be first
 const allowedOrigins = "*";
 app.use(cors({ origin: allowedOrigins }));
 
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Routes
 app.use("/api", routes);
 
 app.get("/", (req, res) => {
   res.send("Welcome to the AI CRM Backend!");
 });
 
+// Error handling should be last
 app.use(errorMiddleware);
 
 module.exports = app;

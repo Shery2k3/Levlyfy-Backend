@@ -11,6 +11,7 @@ const {
   uploadCall,
   reanalyzeCall,
   downloadDecryptedAudio,
+  testgpt,
 } = require("../controllers/callController");
 
 function handleValidation(req, res, next) {
@@ -29,6 +30,8 @@ router.post(
   handleValidation,
   uploadCall
 );
+
+router.post("/testgpt", testgpt)
 
 // Comment out other routes that need database/auth
 // router.post("/:id/reanalyze", reanalyzeCallValidator, handleValidation, reanalyzeCall);
