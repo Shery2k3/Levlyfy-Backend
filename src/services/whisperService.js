@@ -57,93 +57,29 @@ const downloadFromS3 = async (s3Key) => {
 };
 
 /**
- * Generate a pre-signed URL for S3 object (for Whisper API direct access)
- * @param {string} s3Key - S3 object key
- * @param {number} expiresIn - URL expiration time in seconds (default: 1 hour)
- * @returns {Promise<string>} - Pre-signed URL
- */
-const generatePresignedUrl = async (s3Key, expiresIn = 3600) => {
-  try {
-    const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
-    
-    const command = new GetObjectCommand({
-      Bucket: process.env.AWS_S3_BUCKET,
-      Key: s3Key,
-    });
-
-    const presignedUrl = await getSignedUrl(s3Client, command, { expiresIn });
-    console.log(`🔗 Generated pre-signed URL for: ${s3Key}`);
-    return presignedUrl;
-  } catch (error) {
-    console.error("❌ Pre-signed URL generation error:", error);
-    throw new Error(`Failed to generate pre-signed URL: ${error.message}`);
-  }
-};
-
-/**
- * Transcribes audio with optimized approach - tries URL first, falls back to download
- * @param {string} audioSource - S3 key, S3 URL, or local file path
- * @param {boolean} isS3Key - Whether audioSource is an S3 key
+ * Transcribes audio from S3 HTTPS URL by downloading first
+ * @param {string} audioSource - S3 HTTPS URL or local file path
+ * @param {boolean} isUrl - Whether audioSource is a URL (true) or local file path (false)
  * @param {number} maxRetries
  * @returns {Promise<string>} - transcription text
  */
-const transcribeAudio = async (audioSource, isS3Key = true, maxRetries = 3) => {
+const transcribeAudio = async (audioSource, isUrl = true, maxRetries = 3) => {
   if (!audioSource) throw new Error("Audio source is required");
 
-  try {
-    // Strategy 1: Try using pre-signed URL first (faster, no download needed)
-    if (isS3Key) {
-      console.log(`🚀 Attempting direct URL transcription for S3 key: ${audioSource}`);
-      
-      try {
-        const presignedUrl = await generatePresignedUrl(audioSource);
-        
-        const startTime = Date.now();
-        const transcription = await openai.audio.transcriptions.create({
-          file: presignedUrl,
-          model: "whisper-1",
-          // language: "en", // Remove this line if you want auto-detection
-          response_format: "text",
-        });
-        
-        const processingTime = Date.now() - startTime;
-        console.log(`⚡ Direct URL transcription completed in ${processingTime}ms`);
-        console.log(`✅ Transcription successful (${transcription.length} characters)`);
-        
-        return transcription;
-      } catch (urlError) {
-        console.warn(`⚠️ Direct URL transcription failed: ${urlError.message}`);
-        console.log(`📥 Falling back to download method...`);
-      }
-    }
-
-    // Strategy 2: Fallback to download method
-    return await transcribeWithDownload(audioSource, isS3Key, maxRetries);
-
-  } catch (error) {
-    throw new Error(`Transcription failed: ${error.message}`);
-  }
-};
-
-/**
- * Transcribe audio by downloading file first (fallback method)
- * @param {string} audioSource - S3 key or local file path
- * @param {boolean} isS3Key - Whether audioSource is an S3 key
- * @param {number} maxRetries
- * @returns {Promise<string>} - transcription text
- */
-const transcribeWithDownload = async (audioSource, isS3Key = true, maxRetries = 3) => {
   let localFilePath;
   let shouldCleanup = false;
 
   try {
-    // Download from S3 if needed
-    if (isS3Key) {
-      console.log(`📥 Downloading from S3: ${audioSource}`);
-      localFilePath = await downloadFromS3(audioSource);
+    // Download from S3 URL if needed
+    if (isUrl && audioSource.startsWith('https://')) {
+      console.log(`� Downloading from S3 URL: ${audioSource}`);
+      // Extract S3 key from URL for download function
+      const urlParts = audioSource.split('/');
+      const s3Key = urlParts.slice(3).join('/'); // Everything after the domain
+      localFilePath = await downloadFromS3(s3Key);
       shouldCleanup = true;
     } else {
-      localFilePath = audioSource;
+      localFilePath = audioSource; // Assume it's already a local file path
     }
 
     // Verify file exists and has content
@@ -172,8 +108,7 @@ const transcribeWithDownload = async (audioSource, isS3Key = true, maxRetries = 
         const transcription = await openai.audio.transcriptions.create({
           file: audioStream,
           model: "whisper-1",
-          // language: "en", // Remove this if you want auto-detection
-          response_format: "text", // Get plain text instead of JSON
+          response_format: "text",
         });
 
         console.log(`✅ Transcription successful (${transcription.length} characters)`);
@@ -201,12 +136,11 @@ const transcribeWithDownload = async (audioSource, isS3Key = true, maxRetries = 
     if (shouldCleanup && localFilePath && fs.existsSync(localFilePath)) {
       fs.unlinkSync(localFilePath);
     }
-    throw error;
+    throw new Error(`Transcription failed: ${error.message}`);
   }
 };
 
 module.exports = {
   transcribeAudio,
   downloadFromS3,
-  generatePresignedUrl,
 };

@@ -52,7 +52,7 @@ async function uploadCall(req, res) {
       status: "uploaded",
       callNotes: callNotes || "",
       audioUrl: file.location,
-      s3Key: file.key,
+      s3Key: file.key, // Save the S3 key as well
     });
 
     return successResponse(
@@ -158,19 +158,19 @@ async function testTranscription(req, res) {
       return errorResponse(res, "Call not found", 404);
     }
 
-    if (!call.s3Key) {
+    if (!call.audioUrl) {
       return errorResponse(res, "No audio file found for this call", 400);
     }
 
     console.log(`🎯 Testing transcription for call ${callId}`);
-    console.log(`📁 S3 Key: ${call.s3Key}`);
+    console.log(`📁 Audio URL: ${call.audioUrl}`);
 
     // Update call status to processing
     await Call.findByIdAndUpdate(callId, { status: "processing" });
 
-    // Transcribe the audio from S3 using the optimized method
+    // Transcribe the audio using the direct S3 URL
     const startTime = Date.now();
-    const transcript = await transcribeAudio(call.s3Key, true);
+    const transcript = await transcribeAudio(call.audioUrl, true);
     const processingTime = Date.now() - startTime;
 
     if (!transcript || transcript.trim() === "") {
@@ -225,12 +225,12 @@ async function analyzeCallComplete(req, res) {
       return errorResponse(res, "Call not found", 404);
     }
 
-    if (!call.s3Key) {
+    if (!call.audioUrl) {
       return errorResponse(res, "No audio file found for this call", 400);
     }
 
     console.log(`🎯 Starting complete analysis for call ${callId}`);
-    console.log(`📁 S3 Key: ${call.s3Key}`);
+    console.log(`📁 Audio URL: ${call.audioUrl}`);
 
     // Update call status to processing
     await Call.findByIdAndUpdate(callId, { status: "processing" });
@@ -239,7 +239,7 @@ async function analyzeCallComplete(req, res) {
 
     // Step 1: Transcribe the audio
     console.log("🎙️ Step 1: Transcribing audio...");
-    const transcript = await transcribeAudio(call.s3Key, true);
+    const transcript = await transcribeAudio(call.audioUrl, true);
 
     if (!transcript || transcript.trim() === "") {
       await Call.findByIdAndUpdate(callId, { status: "failed" });
