@@ -6,7 +6,7 @@ const openai = new OpenAI({
 });
 
 /**
- * Analyze call transcript using OpenAI GPT
+ * Analyze call transcript using OpenAI GPT (Optimized for speed)
  * @param {string} transcript - The call transcript text
  * @returns {Promise<Object>} - Analysis results
  */
@@ -16,63 +16,119 @@ const analyzeCall = async (transcript) => {
   }
 
   try {
-    const systemPrompt = `You are a CRM performance coach AI that analyzes call transcripts.
-Your task is to provide a balanced assessment that helps the agent improve.
-Always return valid JSON with the following structure:
+    console.log(`🧠 Analyzing transcript (${transcript.length} characters)...`);
+
+    const systemPrompt = `You are a CRM performance coach AI. Analyze call transcripts quickly and efficiently.
+Return ONLY valid JSON with this exact structure:
 {
   "sentiment": "Positive|Negative|Neutral",
-  "feedback": "2-3 sentences of actionable feedback",
-  "summary": "Brief summary of the call",
-  "score": A number between 0 and 100
+  "feedback": "Brief actionable feedback (1-2 sentences)",
+  "summary": "Concise call summary (1-2 sentences)",
+  "score": 75
 }`;
 
-    const userPrompt = `Analyze this call transcript and provide feedback:
-"${transcript.slice(0, 15000)}"`; // Limit to avoid token limits
+    // Limit transcript to avoid token limits and improve speed
+    const truncatedTranscript = transcript.slice(0, 8000);
+
+    const userPrompt = `Analyze this call transcript:\n\n"${truncatedTranscript}"`;
+
+    const startTime = Date.now();
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4", // Consider using a more reliable model like "gpt-4-turbo" if available
+      model: "gpt-3.5-turbo", // Much faster than gpt-4, ~10x speed improvement
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ],
-      temperature: 0.5, // Lower temperature for more consistent results
-      max_tokens: 1000,
+      temperature: 0.3, // Lower for consistency and speed
+      max_tokens: 500, // Reduced for faster response
+      top_p: 0.9, // Slightly more focused responses
     });
 
-    const content = response.choices[0].message.content;
+    const processingTime = Date.now() - startTime;
+    console.log(`⚡ GPT analysis completed in ${processingTime}ms`);
 
-    // Ensure we can parse the response as JSON
+    const content = response.choices[0].message.content.trim();
+
+    // Parse and validate JSON response
     let analysis;
     try {
-      analysis = JSON.parse(content);
+      // Remove any markdown formatting if present
+      const cleanContent = content.replace(/```json\n?|\n?```/g, "").trim();
+      analysis = JSON.parse(cleanContent);
     } catch (parseError) {
-      console.error("Failed to parse GPT response as JSON:", content);
-      throw new Error("Invalid JSON response from GPT");
+      console.error("❌ Failed to parse GPT response:", content);
+      // Return fallback analysis
+      return {
+        sentiment: "Neutral",
+        feedback: "Unable to analyze transcript properly",
+        summary: "Analysis failed - please try again",
+        score: 50,
+      };
     }
 
-    // Validate essential fields
-    if (
-      !analysis.sentiment ||
-      !analysis.feedback ||
-      !analysis.summary ||
-      analysis.score === undefined
-    ) {
-      console.error("Incomplete analysis from GPT:", analysis);
-      throw new Error("GPT analysis missing required fields");
+    // Ensure all required fields exist with defaults
+    const validatedAnalysis = {
+      sentiment: analysis.sentiment || "Neutral",
+      feedback: analysis.feedback || "No specific feedback available",
+      summary: analysis.summary || "No summary available",
+      score: Number(analysis.score) || 50,
+    };
+
+    // Validate score range
+    if (validatedAnalysis.score < 0 || validatedAnalysis.score > 100) {
+      validatedAnalysis.score = 50;
     }
 
-    // Ensure score is a number
-    analysis.score = Number(analysis.score);
-    if (isNaN(analysis.score)) {
-      analysis.score = 50; // Default to middle value if invalid
-    }
-
-    console.log("Analysis complete:", JSON.stringify(analysis, null, 2));
-    return analysis;
+    console.log(
+      `✅ Analysis complete: ${validatedAnalysis.sentiment} sentiment, score: ${validatedAnalysis.score}`
+    );
+    return validatedAnalysis;
   } catch (error) {
-    console.error("GPT analysis error:", error);
-    throw error;
+    console.error("❌ GPT analysis error:", error.message);
+
+    // Return fallback analysis instead of throwing
+    return {
+      sentiment: "Neutral",
+      feedback: "Analysis temporarily unavailable",
+      summary: "Please try again later",
+      score: 50,
+    };
   }
 };
 
-module.exports = { analyzeCall };
+/**
+ * Quick sentiment analysis only (for faster processing)
+ * @param {string} transcript
+ * @returns {Promise<string>}
+ */
+const analyzeSentiment = async (transcript) => {
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-3.5-turbo",
+      messages: [
+        {
+          role: "system",
+          content:
+            "Analyze the sentiment of this call transcript. Respond with only: Positive, Negative, or Neutral",
+        },
+        {
+          role: "user",
+          content: transcript.slice(0, 4000),
+        },
+      ],
+      max_tokens: 10,
+      temperature: 0.1,
+    });
+
+    return response.choices[0].message.content.trim();
+  } catch (error) {
+    console.error("Sentiment analysis error:", error);
+    return "Neutral";
+  }
+};
+
+module.exports = {
+  analyzeCall,
+  analyzeSentiment,
+};

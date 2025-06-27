@@ -1,18 +1,19 @@
 const express = require("express");
 const router = express.Router();
-const { 
-  uploadCallValidator, 
-  reanalyzeCallValidator, 
-  downloadDecryptedAudioValidator 
+const {
+  uploadCallValidator,
+  reanalyzeCallValidator,
+  downloadDecryptedAudioValidator,
 } = require("../validators/callValidator.js");
 const { validationResult } = require("express-validator");
-const { auth, authMiddleware } = require("../middleware/auth.middleware.js");
+const { authMiddleware } = require("../middleware/auth.middleware.js");
 const { uploadToS3 } = require("../middleware/upload.middleware.js");
 const {
   uploadCall,
   reanalyzeCall,
   downloadDecryptedAudio,
   testgpt,
+  testTranscription,
 } = require("../controllers/callController");
 
 function handleValidation(req, res, next) {
@@ -26,14 +27,16 @@ function handleValidation(req, res, next) {
 // Secure upload-call route: middleware chain approach
 router.post(
   "/upload-call",
-  authMiddleware,                    // 1. Check authentication
-  uploadToS3.single("audio"),        // 2. Upload file to S3
+  authMiddleware, // 1. Check authentication
+  uploadToS3.single("audio"), // 2. Upload file to S3
   // uploadCallValidator,             // 3. Validate (if needed)
-  handleValidation,                  // 4. Handle validation errors
-  uploadCall                         // 5. Save to database
+  handleValidation, // 4. Handle validation errors
+  uploadCall // 5. Save to database
 );
 
-router.post("/testgpt", testgpt)
+router.post("/testgpt", testgpt);
+
+router.post("/transcribe/:callId", authMiddleware, testTranscription);
 
 // Comment out other routes that need database/auth
 // router.post("/:id/reanalyze", reanalyzeCallValidator, handleValidation, reanalyzeCall);

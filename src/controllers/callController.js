@@ -27,7 +27,7 @@ async function uploadCall(req, res) {
     // User is authenticated, get userId from token
     const userId = req.user?._id;
     console.log("User ID from token:", userId);
-    
+
     if (!userId) {
       return validationErrorResponse(res, "User authentication failed");
     }
@@ -41,12 +41,12 @@ async function uploadCall(req, res) {
     console.log("File uploaded to S3:", {
       location: file.location,
       key: file.key,
-      size: file.size
+      size: file.size,
     });
 
     // Create Call document with S3 info
     const { callNotes } = req.body || {};
-    
+
     const newCall = await Call.create({
       userId,
       status: "uploaded",
@@ -67,7 +67,6 @@ async function uploadCall(req, res) {
       },
       "Call uploaded successfully to cloud storage"
     );
-
   } catch (error) {
     // If DB save fails, delete the S3 file to avoid orphaned files
     if (req.file?.key) {
@@ -75,7 +74,7 @@ async function uploadCall(req, res) {
         console.error("Failed to delete S3 file after DB error:", deleteError);
       });
     }
-    
+
     console.error("Error in uploadCall controller:", error);
     return errorResponse(res, error.message || "Failed to upload call", 500);
   }
@@ -144,9 +143,68 @@ async function testgpt(req, res) {
   );
 }
 
+async function testTranscription(req, res) {
+  try {
+    const { callId } = req.params;
+
+    if (!callId) {
+      return validationErrorResponse(res, "Call ID is required");
+    }
+
+    // Find the call in database
+    const call = await Call.findById(callId);
+    if (!call) {
+      return errorResponse(res, "Call not found", 404);
+    }
+
+    if (!call.s3Key) {
+      return errorResponse(res, "No audio file found for this call", 400);
+    }
+
+    console.log(`🎯 Testing transcription for call ${callId}`);
+    console.log(`📁 S3 Key: ${call.s3Key}`);
+
+    // Transcribe the audio from S3
+    const transcript = await transcribeAudio(call.s3Key, true);
+
+    if (!transcript || transcript.trim() === "") {
+      return errorResponse(
+        res,
+        "Failed to transcribe audio - empty result",
+        500
+      );
+    }
+
+    // Optionally save transcript to database
+    await Call.findByIdAndUpdate(callId, {
+      transcript,
+      status: "transcribed",
+    });
+
+    return successResponse(
+      res,
+      {
+        callId,
+        transcript,
+        transcriptLength: transcript.length,
+        wordCount: transcript.split(" ").length,
+      },
+      "Audio transcribed successfully"
+    );
+  } catch (error) {
+    console.error("Test transcription error:", error);
+    return errorResponse(
+      res,
+      error.message || "Failed to transcribe audio",
+      500
+    );
+  }
+}
+
 module.exports = {
   uploadCall,
   reanalyzeCall,
   downloadDecryptedAudio,
   testgpt,
+  testTranscription,
 };

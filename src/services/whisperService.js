@@ -1,69 +1,151 @@
 const fs = require("fs");
 const path = require("path");
 const { OpenAI } = require("openai");
+const { S3Client, GetObjectCommand } = require("@aws-sdk/client-s3");
 require("dotenv").config();
-const { decryptFile } = require("../utils/fileEncryption"); // import this
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+// Configure S3 Client
+const s3Client = new S3Client({
+  region: process.env.AWS_REGION,
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  },
+});
+
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * Transcribes audio with retry logic
- * @param {string} encryptedAudioPath - Path to encrypted audio file
- * @param {number} maxRetries
- * @returns {Promise<string>} - transcription text
+ * Download file from S3 to temporary location
+ * @param {string} s3Key - S3 object key
+ * @returns {Promise<string>} - Local file path
  */
-const transcribeAudio = async (encryptedAudioPath, maxRetries = 3) => {
-  if (!encryptedAudioPath) throw new Error("Audio path is required");
-
+const downloadFromS3 = async (s3Key) => {
   const tempDir = path.resolve("temp");
-  if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir);
+  if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
 
-  const decryptedPath = path.resolve(
-    "temp",
-    `dec-${Date.now()}-${path.basename(encryptedAudioPath)}`
+  const localPath = path.join(
+    tempDir,
+    `download-${Date.now()}-${path.basename(s3Key)}`
   );
 
   try {
-    await decryptFile(encryptedAudioPath, decryptedPath);
-    console.log("✅ Decryption complete:", decryptedPath);
-  } catch (err) {
-    console.error("❌ Decrypt error:", err);
-    throw new Error("Could not decrypt audio file");
+    const command = new GetObjectCommand({
+      Bucket: process.env.AWS_S3_BUCKET,
+      Key: s3Key,
+    });
+
+    const response = await s3Client.send(command);
+    const stream = response.Body;
+
+    // Write stream to file
+    const writeStream = fs.createWriteStream(localPath);
+
+    return new Promise((resolve, reject) => {
+      stream.pipe(writeStream);
+      writeStream.on("finish", () => resolve(localPath));
+      writeStream.on("error", reject);
+    });
+  } catch (error) {
+    console.error("❌ S3 download error:", error);
+    throw new Error(`Failed to download file from S3: ${error.message}`);
   }
+};
 
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      console.log(`🎙️ Transcription attempt ${attempt} → ${decryptedPath}`);
+/**
+ * Transcribes audio with retry logic - supports both S3 and local files
+ * @param {string} audioSource - S3 key or local file path
+ * @param {boolean} isS3Key - Whether audioSource is an S3 key
+ * @param {number} maxRetries
+ * @returns {Promise<string>} - transcription text
+ */
+const transcribeAudio = async (audioSource, isS3Key = true, maxRetries = 3) => {
+  if (!audioSource) throw new Error("Audio source is required");
 
-      const audioStream = fs.createReadStream(decryptedPath);
+  let localFilePath;
+  let shouldCleanup = false;
 
-      const transcription = await openai.audio.transcriptions.create({
-        file: audioStream,
-        model: "whisper-1",
-        language: "en",
-      });
+  try {
+    // Download from S3 if needed
+    if (isS3Key) {
+      console.log(`📥 Downloading from S3: ${audioSource}`);
+      localFilePath = await downloadFromS3(audioSource);
+      shouldCleanup = true;
+    } else {
+      localFilePath = audioSource;
+    }
 
-      fs.unlinkSync(decryptedPath);
+    // Verify file exists and has content
+    if (!fs.existsSync(localFilePath)) {
+      throw new Error(`File not found: ${localFilePath}`);
+    }
 
-      return transcription.text;
-    } catch (error) {
-      console.error(`⚠️ Whisper API error (attempt ${attempt}):`, error.message);
-      if (attempt < maxRetries) {
-        const wait = 2000 * attempt;
-        console.log(`⏳ Retrying in ${wait}ms...`);
-        await sleep(wait);
-      } else {
-        fs.existsSync(decryptedPath) && fs.unlinkSync(decryptedPath);
-        throw new Error("All transcription attempts failed");
+    const fileStats = fs.statSync(localFilePath);
+    if (fileStats.size === 0) {
+      throw new Error("Audio file is empty");
+    }
+
+    console.log(
+      `📁 File ready for transcription: ${localFilePath} (${(
+        fileStats.size /
+        1024 /
+        1024
+      ).toFixed(2)}MB)`
+    );
+
+    // Transcribe with retry logic
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`🎙️ Transcription attempt ${attempt}/${maxRetries}`);
+
+        const audioStream = fs.createReadStream(localFilePath);
+
+        const transcription = await openai.audio.transcriptions.create({
+          file: audioStream,
+          model: "whisper-1",
+          language: "en", // Remove this if you want auto-detection
+          response_format: "text", // Get plain text instead of JSON
+        });
+
+        console.log(
+          `✅ Transcription successful (${transcription.length} characters)`
+        );
+
+        // Clean up temporary file
+        if (shouldCleanup) {
+          fs.unlinkSync(localFilePath);
+        }
+
+        return transcription;
+      } catch (error) {
+        console.error(
+          `⚠️ Whisper API error (attempt ${attempt}):`,
+          error.message
+        );
+
+        if (attempt < maxRetries) {
+          const wait = Math.min(2000 * attempt, 10000); // Cap at 10 seconds
+          console.log(`⏳ Retrying in ${wait}ms...`);
+          await sleep(wait);
+        } else {
+          throw error;
+        }
       }
     }
+  } catch (error) {
+    // Clean up on error
+    if (shouldCleanup && localFilePath && fs.existsSync(localFilePath)) {
+      fs.unlinkSync(localFilePath);
+    }
+    throw new Error(`Transcription failed: ${error.message}`);
   }
 };
 
 module.exports = {
   transcribeAudio,
+  downloadFromS3,
 };
