@@ -18,8 +18,12 @@ async function getLeaderboard(req, res) {
       monthAgo.setMonth(monthAgo.getMonth() - 1);
       dateFilter = { createdAt: { $gte: monthAgo } };
     }
-    // Aggregate leaderboard stats
-    const leaderboard = await Call.aggregate([
+
+    // Get ALL users first
+    const allUsers = await User.find({ isDeleted: { $ne: true } }, 'name email').lean();
+    
+    // Aggregate call stats for users who have made calls in the period
+    const callStats = await Call.aggregate([
       { $match: dateFilter },
       { $group: {
           _id: '$userId',
@@ -29,23 +33,56 @@ async function getLeaderboard(req, res) {
           totalScore: { $sum: { $ifNull: ['$score', 0] } },
         }
       },
-      { $sort: { totalScore: -1 } },
-      { $limit: 20 },
     ]);
-    // Populate user info
-    const userIds = leaderboard.map(l => l._id);
-    const users = await User.find({ _id: { $in: userIds } }, 'name email');
-    const userMap = Object.fromEntries(users.map(u => [u._id.toString(), u]));
+
+    // Create a map of user stats
+    const statsMap = Object.fromEntries(
+      callStats.map(stat => [stat._id.toString(), stat])
+    );
+
+    // Helper function to calculate rank based on multiple metrics
+    const calculateRank = (stats) => {
+      const { callsMade, dealsClosed, totalScore } = stats;
+      
+      // Multi-tier ranking system
+      if (totalScore >= 500 && callsMade >= 10 && dealsClosed >= 3) {
+        return 'challenger'; // Top tier (purple/blue)
+      } else if (totalScore >= 200 && callsMade >= 5 && dealsClosed >= 1) {
+        return 'gold'; // High performer
+      } else if (totalScore >= 50 && callsMade >= 2) {
+        return 'silver'; // Active user
+      } else {
+        return 'bronze'; // Beginner/inactive
+      }
+    };
+
+    // Combine all users with their stats (or default values)
+    const leaderboard = allUsers.map(user => {
+      const stats = statsMap[user._id.toString()] || {
+        callsMade: 0,
+        dealsClosed: 0,
+        upsells: 0,
+        totalScore: 0,
+      };
+      
+      return {
+        userId: user._id,
+        name: user.name || 'Unknown',
+        callsMade: stats.callsMade,
+        dealsClosed: stats.dealsClosed,
+        upsells: stats.upsells,
+        totalScore: stats.totalScore,
+        rank: calculateRank(stats),
+      };
+    });
+
+    // Sort by total score (descending) and add place
+    leaderboard.sort((a, b) => b.totalScore - a.totalScore);
     const result = leaderboard.map((entry, idx) => ({
+      ...entry,
       place: idx + 1,
-      userId: entry._id,
-      name: userMap[entry._id.toString()]?.name || 'Unknown',
-      callsMade: entry.callsMade,
-      dealsClosed: entry.dealsClosed,
-      upsells: entry.upsells,
-      totalScore: entry.totalScore,
-      rank: entry.totalScore > 1000 ? 'challenger' : 'gold', // Example logic
     }));
+
     return successResponse(res, result, 'Leaderboard fetched');
   } catch (err) {
     return errorResponse(res, err.message || 'Failed to fetch leaderboard');
@@ -76,12 +113,26 @@ async function getMyStats(req, res) {
       { $group: { _id: null, total: { $sum: { $ifNull: ['$score', 0] } } } }
     ]);
     const totalScore = totalScoreAgg[0]?.total || 0;
+    
+    // Helper function to calculate rank (same logic as leaderboard)
+    const calculateRank = (callsMade, dealsClosed, totalScore) => {
+      if (totalScore >= 500 && callsMade >= 10 && dealsClosed >= 3) {
+        return 'challenger';
+      } else if (totalScore >= 200 && callsMade >= 5 && dealsClosed >= 1) {
+        return 'gold';
+      } else if (totalScore >= 50 && callsMade >= 2) {
+        return 'silver';
+      } else {
+        return 'bronze';
+      }
+    };
+    
     return successResponse(res, {
       callsMade,
       dealsClosed,
       upsells,
       totalScore,
-      rank: totalScore > 1000 ? 'challenger' : 'gold', // Example logic
+      rank: calculateRank(callsMade, dealsClosed, totalScore),
     }, 'Your stats fetched');
   } catch (err) {
     return errorResponse(res, err.message || 'Failed to fetch stats');
