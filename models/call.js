@@ -17,6 +17,9 @@ const callSchema = new mongoose.Schema({
     default: 'uploaded' 
   },
   errorMessage: { type: String }, // Store error message if processing fails
+  dealMade: { type: Boolean, default: false }, // Whether a deal was made on this call
+  dealClosed: { type: Boolean, default: false }, // Whether a deal was closed on this call
+  upsell: { type: Boolean, default: false }, // Whether an upsell was achieved
   // Add more fields as needed for gamification/analytics
 }, { timestamps: true });
 
