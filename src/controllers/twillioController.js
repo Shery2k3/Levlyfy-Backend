@@ -53,7 +53,7 @@ const startCall = async (req, res) => {
       to, // e.g. '+92300xxxxxxx'
       from: process.env.TWILIO_VERIFIED_CALLER_ID,
       // Pass the user's identity to the voice URL
-      url: `https://6ed6466cdde3.ngrok-free.app/api/twillio/voice?identity=${identity}`, 
+      url: `${process.env.BASE_URL}/api/twillio/voice?identity=${identity}`, 
     });
 
     res.status(200).json({ success: true, sid: call.sid });
