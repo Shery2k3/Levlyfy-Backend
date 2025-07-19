@@ -48,16 +48,27 @@ const voice = (req, res) => {
     twiml.say({ voice: 'alice' }, 'Error: No user identity provided. Call will end.');
     twiml.hangup();
   } else {
-    console.log("✅ Creating dial instruction for client:", identity);
+    // When Twilio calls the webhook, the external phone number is already connected
+    // We need to now connect this to the browser client
+    console.log("✅ External phone answered, now connecting to browser client:", identity);
+    
+    // Add a small pause to ensure clean audio
+    twiml.pause({ length: 1 });
+    
+    // Now dial the client (browser) to bridge the call
     const dial = twiml.dial({ 
-      callerId: process.env.TWILIO_VERIFIED_CALLER_ID,
       timeout: 30,
-      record: false
+      record: false,
+      action: `${process.env.BASE_URL}/api/twillio/dial-status?identity=${identity}`,
+      method: 'POST'
     });
 
     // This will dial the client in your frontend app
     dial.client(identity); 
-    console.log("📱 Dialing client with identity:", identity);
+    console.log("📱 Dialing browser client with identity:", identity);
+    
+    // If the browser client doesn't answer, play a message
+    twiml.say({ voice: 'alice' }, 'The agent is not available. Please try again later.');
   }
 
   const twimlString = twiml.toString();
@@ -88,7 +99,7 @@ const startCall = async (req, res) => {
   console.log("👤 User Identity:", identity);
   console.log("🌐 Base URL:", process.env.BASE_URL);
   
-  const webhookUrl = `${process.env.BASE_URL}/api/twillio/voice?identity=${identity}`;
+  const webhookUrl = `${process.env.BASE_URL}/api/twillio/twilio-test?identity=${identity}`;
   console.log("🔗 Webhook URL that will be called:", webhookUrl);
 
   try {
@@ -98,8 +109,12 @@ const startCall = async (req, res) => {
       from: process.env.TWILIO_VERIFIED_CALLER_ID,
       // Pass the user's identity to the voice URL
       url: webhookUrl,
-      // Add headers to bypass ngrok browser warning
-      method: 'POST'
+      method: 'POST',
+      // Add timeout for faster debugging
+      timeout: 60,
+      // Status callbacks to track webhook calls
+      statusCallback: `${process.env.BASE_URL}/api/twillio/status`,
+      statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed']
     });
 
     console.log("✅ Twilio call created successfully!");
