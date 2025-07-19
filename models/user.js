@@ -17,6 +17,13 @@ const userSchema = new mongoose.Schema({
   role: {
     type: String,
   },
+  contacts: [{
+    name: { type: String, required: true },
+    phone: { type: String, required: true },
+    notes: { type: String, default: '' },
+    tags: [{ type: String }],
+    createdAt: { type: Date, default: Date.now }
+  }],
   isDeleted: {
     type: Boolean,
     default: false,

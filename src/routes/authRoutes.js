@@ -13,6 +13,10 @@ const {
   forgetPassword,
   resetPasswordWithToken,
   signupUser,
+  getUserProfile,
+  addContact,
+  updateContact,
+  deleteContact,
 } = require("../controllers/authController.js");
 const { authMiddleware } = require("../middleware/auth.middleware.js");
 const { validationResult } = require("express-validator");
@@ -46,5 +50,11 @@ router.post(
   handleValidation,
   resetPasswordWithToken
 );
+
+// User profile and contacts routes
+router.get("/me", authMiddleware, getUserProfile);
+router.post("/contacts", authMiddleware, addContact);
+router.put("/contacts/:contactId", authMiddleware, updateContact);
+router.delete("/contacts/:contactId", authMiddleware, deleteContact);
 
 module.exports = router;

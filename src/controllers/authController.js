@@ -140,10 +140,135 @@ async function resetPasswordWithToken(req, res) {
   return successResponse(res, {}, "Password reset successfully");
 }
 
+async function getUserProfile(req, res) {
+  try {
+    console.log("getUserProfile - req.user:", req.user);
+    const userId = req.user.data?._id || req.user._id;
+    console.log("getUserProfile - userId:", userId);
+    const user = await User.findById(userId).select('-password');
+    if (!user) {
+      return errorResponse(res, "User not found", 404);
+    }
+    console.log("getUserProfile - found user with contacts:", user.contacts?.length || 0);
+    return successResponse(res, { user }, "User profile retrieved successfully");
+  } catch (error) {
+    console.error("getUserProfile error:", error);
+    return errorResponse(res, "Server error", 500);
+  }
+}
+
+async function addContact(req, res) {
+  try {
+    const userId = req.user.data?._id || req.user._id;
+    const { name, phone, notes } = req.body;
+    
+    console.log("addContact - userId:", userId, "data:", { name, phone, notes });
+    
+    if (!name || !phone) {
+      return validationErrorResponse(res, "Name and phone are required");
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return errorResponse(res, "User not found", 404);
+    }
+
+    // Check if contact with same phone already exists for this user
+    const existingContact = user.contacts.find(contact => contact.phone === phone);
+    if (existingContact) {
+      return errorResponse(res, "Contact with this phone number already exists", 400);
+    }
+
+    const newContact = {
+      name,
+      phone,
+      notes: notes || '',
+      createdAt: new Date()
+    };
+
+    user.contacts.push(newContact);
+    await user.save();
+
+    const addedContact = user.contacts[user.contacts.length - 1];
+    return successResponse(res, { contact: addedContact }, "Contact added successfully");
+  } catch (error) {
+    console.log(error)
+    return errorResponse(res, "Server error", 500);
+  }
+}
+
+async function updateContact(req, res) {
+  try {
+    const userId = req.user.data?._id || req.user._id;
+    const { contactId } = req.params;
+    const { name, phone, notes } = req.body;
+
+    if (!name || !phone) {
+      return validationErrorResponse(res, "Name and phone are required");
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return errorResponse(res, "User not found", 404);
+    }
+
+    const contactIndex = user.contacts.findIndex(contact => contact._id.toString() === contactId);
+    if (contactIndex === -1) {
+      return errorResponse(res, "Contact not found", 404);
+    }
+
+    // Check if another contact with same phone exists (excluding current contact)
+    const existingContact = user.contacts.find((contact, index) => 
+      contact.phone === phone && index !== contactIndex
+    );
+    if (existingContact) {
+      return errorResponse(res, "Another contact with this phone number already exists", 400);
+    }
+
+    user.contacts[contactIndex].name = name;
+    user.contacts[contactIndex].phone = phone;
+    user.contacts[contactIndex].notes = notes || '';
+    
+    await user.save();
+
+    return successResponse(res, { contact: user.contacts[contactIndex] }, "Contact updated successfully");
+  } catch (error) {
+    return errorResponse(res, "Server error", 500);
+  }
+}
+
+async function deleteContact(req, res) {
+  try {
+    const userId = req.user.data?._id || req.user._id;
+    const { contactId } = req.params;
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return errorResponse(res, "User not found", 404);
+    }
+
+    const contactIndex = user.contacts.findIndex(contact => contact._id.toString() === contactId);
+    if (contactIndex === -1) {
+      return errorResponse(res, "Contact not found", 404);
+    }
+
+    user.contacts.splice(contactIndex, 1);
+    await user.save();
+
+    return successResponse(res, {}, "Contact deleted successfully");
+  } catch (error) {
+    return errorResponse(res, "Server error", 500);
+  }
+}
+
 module.exports = {
   loginUser,
   signupUser,
   changePassword,
   forgetPassword,
   resetPasswordWithToken,
+  getUserProfile,
+  addContact,
+  updateContact,
+  deleteContact,
 };
