@@ -9,6 +9,6 @@ const twillioRoutes = require("./twillioRoutes");
 router.use("/auth", authRoutes);
 router.use("/call", callRoutes); // Remove auth middleware for demo
 router.use("/performance", authMiddleware, performanceRoutes);
-router.use("/twillio", authMiddleware,twillioRoutes);
+router.use("/twillio", twillioRoutes); // Remove auth middleware so webhooks can work
 
 module.exports = router;

@@ -97,7 +97,9 @@ const startCall = async (req, res) => {
       to, // e.g. '+92300xxxxxxx'
       from: process.env.TWILIO_VERIFIED_CALLER_ID,
       // Pass the user's identity to the voice URL
-      url: webhookUrl, 
+      url: webhookUrl,
+      // Add headers to bypass ngrok browser warning
+      method: 'POST'
     });
 
     console.log("✅ Twilio call created successfully!");
