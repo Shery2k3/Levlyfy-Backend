@@ -160,12 +160,23 @@ async function getUserProfile(req, res) {
 async function addContact(req, res) {
   try {
     const userId = req.user.data?._id || req.user._id;
-    const { name, phone, notes } = req.body;
+    let { name, phone, notes } = req.body;
     
     console.log("addContact - userId:", userId, "data:", { name, phone, notes });
     
     if (!name || !phone) {
       return validationErrorResponse(res, "Name and phone are required");
+    }
+
+    // Validate and format phone number
+    phone = phone.replace(/[^+\d]/g, ''); // Remove non-digit chars except +
+    
+    if (!phone.startsWith('+')) {
+      return validationErrorResponse(res, "Phone number must include country code (e.g., +92...)");
+    }
+    
+    if (phone.length < 10) {
+      return validationErrorResponse(res, "Phone number is too short");
     }
 
     const user = await User.findById(userId);
@@ -201,10 +212,21 @@ async function updateContact(req, res) {
   try {
     const userId = req.user.data?._id || req.user._id;
     const { contactId } = req.params;
-    const { name, phone, notes } = req.body;
+    let { name, phone, notes } = req.body;
 
     if (!name || !phone) {
       return validationErrorResponse(res, "Name and phone are required");
+    }
+
+    // Validate and format phone number
+    phone = phone.replace(/[^+\d]/g, ''); // Remove non-digit chars except +
+    
+    if (!phone.startsWith('+')) {
+      return validationErrorResponse(res, "Phone number must include country code (e.g., +92...)");
+    }
+    
+    if (phone.length < 10) {
+      return validationErrorResponse(res, "Phone number is too short");
     }
 
     const user = await User.findById(userId);
