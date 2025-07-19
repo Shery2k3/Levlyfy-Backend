@@ -17,13 +17,22 @@ const getToken = (req, res) => {
 };
 
 const voice = (req, res) => {
-  const to = req.body.to; // match key in your frontend payload
+  // The 'To' parameter in this request is the phone number you are calling.
+  // The 'From' parameter is your Twilio number.
+  // We are not using them here.
 
   const VoiceResponse = twilio.twiml.VoiceResponse;
   const twiml = new VoiceResponse();
+
+  // The identity of the user who initiated the call,
+  // assuming you can pass it in the URL query params from startCall
+  // For example: /api/twillio/voice?identity=user123
+  const identity = req.query.identity; 
+
   const dial = twiml.dial({ callerId: process.env.TWILIO_VERIFIED_CALLER_ID });
 
-  dial.number(to); // 🔁 Dials a real phone number, not a client identity
+  // This will dial the client in your frontend app
+  dial.client(identity); 
 
   res.type("text/xml");
   res.send(twiml.toString());
@@ -37,12 +46,14 @@ const client = twilio(
 
 const startCall = async (req, res) => {
   const { to } = req.body;
+  const identity = req.user._id; // Assuming auth middleware provides the user
 
   try {
     const call = await client.calls.create({
       to, // e.g. '+92300xxxxxxx'
       from: process.env.TWILIO_VERIFIED_CALLER_ID,
-      url: "https://6ed6466cdde3.ngrok-free.app/api/twillio/voice", // Twilio calls this route
+      // Pass the user's identity to the voice URL
+      url: `https://6ed6466cdde3.ngrok-free.app/api/twillio/voice?identity=${identity}`, 
     });
 
     res.status(200).json({ success: true, sid: call.sid });
