@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const { authMiddleware } = require("../middleware/auth.middleware");
+const { twilioWebhookMiddleware } = require("../middleware/twilio.middleware");
 const { 
   getToken, 
   voice, 
@@ -14,7 +15,7 @@ const {
 router.get("/token", authMiddleware, getToken);
 
 // Voice webhook does NOT need auth (Twilio calling it)
-router.all("/voice", voice);
+router.all("/voice", twilioWebhookMiddleware, voice);
 
 // Conference join webhook
 router.all("/join-conference", handleConferenceJoin);
@@ -58,13 +59,20 @@ router.post("/start-call", authMiddleware, startCall);
 router.post("/join-conference", authMiddleware, joinConference);
 
 // Test endpoints for debugging
-router.all("/webhook-test", (req, res) => {
+router.all("/webhook-test", twilioWebhookMiddleware, (req, res) => {
   console.log("🔗 WEBHOOK CONNECTIVITY TEST!");
   console.log("Method:", req.method);
   console.log("Query:", req.query);
   console.log("Body:", req.body);
   res.type("text/xml");
   res.send('<?xml version="1.0" encoding="UTF-8"?><Response><Say voice="alice">Webhook connectivity test successful! Your ngrok tunnel is working.</Say><Pause length="2"/><Hangup/></Response>');
+});
+
+// Simple test endpoint that doesn't require TwiML
+router.get("/test-simple", twilioWebhookMiddleware, (req, res) => {
+  console.log("🧪 SIMPLE TEST ENDPOINT HIT!");
+  console.log("Query:", req.query);
+  res.json({ success: true, message: "Endpoint working!", timestamp: new Date().toISOString() });
 });
 
 module.exports = router;

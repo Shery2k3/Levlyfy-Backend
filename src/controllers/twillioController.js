@@ -30,6 +30,7 @@ const getToken = (req, res) => {
 
 const voice = (req, res) => {
   console.log("🔊 VOICE WEBHOOK CALLED!");
+  console.log("📋 Request Method:", req.method);
   console.log("📋 Request Query Params:", req.query);
   console.log("📋 Request Body:", req.body);
   console.log("📋 Request Headers:", req.headers);
@@ -39,6 +40,7 @@ const voice = (req, res) => {
   console.log("📞 To (phone number):", req.body.To || req.query.To);
   console.log("📞 From (Twilio number):", req.body.From || req.query.From);
   console.log("📞 Call SID:", req.body.CallSid || req.query.CallSid);
+  console.log("📞 Call Status:", req.body.CallStatus || req.query.CallStatus);
 
   const twiml = new VoiceResponse();
 
@@ -115,6 +117,12 @@ const startCall = async (req, res) => {
 
   try {
     console.log("📡 Making Twilio API call...");
+    console.log("🔗 Full webhook URL that Twilio will call:", webhookUrl);
+    
+    // Test if our webhook URL is accessible first
+    const webhookTestUrl = `${process.env.SERVER_BASE_URL}/api/twilio/test-simple?test=1`;
+    console.log("🧪 Testing webhook accessibility:", webhookTestUrl);
+    
     const call = await client.calls.create({
       to,
       from: process.env.TWILIO_PHONE_NUMBER,
@@ -122,14 +130,21 @@ const startCall = async (req, res) => {
       method: 'POST',
       timeout: 60,
       statusCallback: `${process.env.SERVER_BASE_URL}/api/twilio/status`,
-      statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed']
+      statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
+      statusCallbackMethod: 'POST'
     });
 
     console.log("✅ Twilio call created successfully!");
     console.log("📞 Call SID:", call.sid);
     console.log("📞 Call Status:", call.status);
+    console.log("🔗 Webhook URL that was sent to Twilio:", webhookUrl);
 
-    return successResponse(res, { callSid: call.sid, status: call.status, webhookUrl }, "Call initiated successfully");
+    return successResponse(res, { 
+      callSid: call.sid, 
+      status: call.status, 
+      webhookUrl,
+      testUrl: webhookTestUrl 
+    }, "Call initiated successfully");
   } catch (error) {
     console.error("❌ Twilio Call Error:", error);
     console.error("❌ Error Details:", {
