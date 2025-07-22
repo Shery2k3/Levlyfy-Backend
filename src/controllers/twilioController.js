@@ -1,14 +1,14 @@
-const { Twilio } = require("twilio");
+const Twilio = require("twilio");
 
 async function generateAccessToken(req, res) {
-  const identity = "agent_" + req.user.id.toString();
+  const identity = "agent_" + req.user._id.toString();
 
   const AccessToken = Twilio.jwt.AccessToken;
   const VoiceGrant = AccessToken.VoiceGrant;
 
   const accessToken = new AccessToken(
     process.env.TWILIO_ACCOUNT_SID,
-    process.env.TWILIO_API_KEY,
+    process.env.TWILIO_API_SID,
     process.env.TWILIO_API_SECRET,
     { identity }
   );
