@@ -64,12 +64,14 @@ const voice = (req, res) => {
     const conferenceName = `call-${identity}-${Date.now()}`;
     
     // Join the conference and wait for the client to join
-    twiml.dial({ 
+    const dial = twiml.dial({ 
       timeout: 30,
       record: false,
       action: `${process.env.SERVER_BASE_URL}/api/twilio/dial-status?identity=${identity}`,
       method: 'POST'
-    }).conference(conferenceName, {
+    });
+    
+    dial.conference(conferenceName, {
       startConferenceOnEnter: true,
       endConferenceOnExit: true,
       waitUrl: `${process.env.SERVER_BASE_URL}/api/twilio/wait-music`,
@@ -78,6 +80,26 @@ const voice = (req, res) => {
     });
     
     console.log("🏟️ Conference room created:", conferenceName);
+    
+    // CRITICAL FIX: After putting external caller in conference,
+    // immediately call the browser client to join the same conference
+    console.log("🚀 CALLING BROWSER CLIENT TO JOIN CONFERENCE");
+    
+    // Use setTimeout to make this call after responding to the webhook
+    setTimeout(async () => {
+      try {
+        console.log("📞 Calling browser client:", `client:${identity}`);
+        const clientCall = await client.calls.create({
+          to: `client:${identity}`,
+          from: process.env.TWILIO_PHONE_NUMBER,
+          url: `${process.env.SERVER_BASE_URL}/api/twilio/join-conference?conferenceName=${conferenceName}&identity=${identity}`,
+          method: 'POST'
+        });
+        console.log("✅ Browser client call created:", clientCall.sid);
+      } catch (error) {
+        console.error("❌ Failed to call browser client:", error);
+      }
+    }, 1000); // Wait 1 second to ensure external caller is in conference first
   }
 
   const twimlString = twiml.toString();
@@ -114,6 +136,8 @@ const startCall = async (req, res) => {
   
   const webhookUrl = `${process.env.SERVER_BASE_URL}/api/twilio/voice?identity=${encodeURIComponent(identity)}`;
   console.log("🔗 Webhook URL that will be called:", webhookUrl);
+  console.log("🚨 IMPORTANT: This URL will ONLY be called when the external phone ANSWERS the call!");
+  console.log("🚨 If you see no webhook logs, it means the external phone did NOT answer!");
 
   try {
     console.log("📡 Making Twilio API call...");
