@@ -1,6 +1,6 @@
 const { Twilio } = require("twilio");
 
-export async function generateAccessToken(req, res) {
+async function generateAccessToken(req, res) {
   const identity = "agent_" + req.user.id.toString();
 
   const AccessToken = Twilio.jwt.AccessToken;
@@ -26,7 +26,7 @@ export async function generateAccessToken(req, res) {
   return res.status(200).json({ token, identity });
 }
 
-export async function voice(req, res) {
+async function voice(req, res) {
   console.log("📞 VOICE WEBHOOK RECEIVED!");
 
   //? The number dialed by our client
@@ -50,3 +50,8 @@ export async function voice(req, res) {
   res.send(twiml.toString());
   console.log("Responding with TwiML:", twiml.toString());
 }
+
+module.exports = {
+  generateAccessToken,
+  voice,
+};
