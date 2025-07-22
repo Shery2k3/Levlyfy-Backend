@@ -112,7 +112,7 @@ const startCall = async (req, res) => {
   console.log("👤 User Identity:", identity);
   console.log("🌐 Base URL:", process.env.SERVER_BASE_URL);
   
-  const webhookUrl = `${process.env.SERVER_BASE_URL}/api/twilio/voice?identity=${identity}`;
+  const webhookUrl = `${process.env.SERVER_BASE_URL}/api/twilio/voice?identity=${encodeURIComponent(identity)}`;
   console.log("🔗 Webhook URL that will be called:", webhookUrl);
 
   try {

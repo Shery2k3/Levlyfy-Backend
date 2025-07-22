@@ -75,4 +75,23 @@ router.get("/test-simple", twilioWebhookMiddleware, (req, res) => {
   res.json({ success: true, message: "Endpoint working!", timestamp: new Date().toISOString() });
 });
 
+// CRITICAL: Add a dedicated webhook URL test specifically for Twilio Console
+router.all("/twilio-console-test", twilioWebhookMiddleware, (req, res) => {
+  console.log("🚨 TWILIO CONSOLE WEBHOOK TEST!");
+  console.log("📋 This URL should be set in Twilio Console TwiML App");
+  console.log("📋 URL: https://precious-art-production.up.railway.app/api/twilio/twilio-console-test");
+  console.log("📋 Method:", req.method);
+  console.log("📋 User-Agent:", req.get('User-Agent'));
+  console.log("📋 Headers:", req.headers);
+  console.log("📋 Body:", req.body);
+  console.log("📋 Query:", req.query);
+  
+  const VoiceResponse = require("twilio").twiml.VoiceResponse;
+  const twiml = new VoiceResponse();
+  twiml.say("Twilio webhook connectivity test successful! Your webhook is working from Twilio Console.");
+  
+  res.type("text/xml");
+  res.send(twiml.toString());
+});
+
 module.exports = router;
