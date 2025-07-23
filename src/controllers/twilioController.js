@@ -1,6 +1,7 @@
 const Twilio = require("twilio");
 const axios = require("axios");
 const FormData = require("form-data");
+const TwilioCall = require("../../models/twilioCall.js");
 
 async function generateAccessToken(req, res) {
   const identity = "agent_" + req.user._id.toString();
@@ -30,12 +31,42 @@ async function generateAccessToken(req, res) {
 
 async function voice(req, res) {
   console.log("📞 VOICE WEBHOOK RECEIVED!");
+  console.log("📞 Request body:", req.body);
+  console.log("📞 Request headers:", req.headers);
 
-  //? The number dialed by our client
   const phoneNumberToDial = req.body.To || req.query.To;
-
-  //? The twilio number we own
   const callerId = process.env.TWILIO_PHONE_NUMBER;
+  const callSid = req.body.CallSid; // Extract CallSid from webhook
+  const from = req.body.From; // This contains the identity
+
+  console.log("📞 CallSid from webhook:", callSid);
+  console.log("📞 From (identity):", from);
+
+  // Extract userId from the 'From' parameter (which contains the identity)
+  if (callSid && from) {
+    try {
+      // Extract userId from identity like "client:agent_USER_ID"
+      const identityMatch = from.match(/agent_([a-f0-9]{24})/);
+      if (identityMatch) {
+        const userId = identityMatch[1];
+        console.log(`📞 Extracted userId: ${userId} from identity: ${from}`);
+        
+        // Pre-create the call metadata
+        const twilioCall = await TwilioCall.create({
+          callSid,
+          userId,
+          phoneNumber: phoneNumberToDial,
+          status: "in-progress",
+        });
+        
+        console.log(`✅ Pre-created call metadata for CallSid: ${callSid}`);
+      } else {
+        console.log(`⚠️ Could not extract userId from identity: ${from}`);
+      }
+    } catch (error) {
+      console.error("❌ Error pre-creating call metadata:", error);
+    }
+  }
 
   const twiml = new Twilio.twiml.VoiceResponse();
 
@@ -54,6 +85,7 @@ async function voice(req, res) {
     console.error("❌ No phone number provided to dial");
     twiml.say("No phone number provided to dial.");
   }
+  
   res.type("text/xml");
   res.send(twiml.toString());
   console.log("Responding with TwiML:", twiml.toString());
@@ -75,8 +107,26 @@ async function recordingStatus(req, res) {
       console.log(`📹 Recording completed: ${RecordingUrl}`);
       console.log(`⏱️ Duration: ${RecordingDuration} seconds`);
 
+      const twilioCall = await TwilioCall.findOne({
+        callSid: CallSid,
+      });
+
+      if (!twilioCall) {
+        console.error(`❌ No call metadata found for CallSid: ${CallSid}`);
+        return res
+          .status(200)
+          .send("Call metadata not found, but acknowledged");
+      }
+
+      console.log(`✅ Found user ${twilioCall.userId} for CallSid ${CallSid}`);
+
       // Download the recording from Twilio
-      await downloadAndProcessRecording(RecordingUrl, CallSid, RecordingSid);
+      await downloadAndProcessRecording(
+        RecordingUrl,
+        CallSid,
+        RecordingSid,
+        twilioCall.userId
+      );
     }
 
     res.status(200).send("OK");
@@ -90,9 +140,11 @@ function generateSystemToken(userId) {
   const jwt = require("jsonwebtoken");
   const jwtSecret = process.env.JWT_SECRET;
 
+  const userIdString = userId.toString();
+
   return jwt.sign(
     {
-      data: { _id: userId },
+      data: { _id: userIdString },
       system: true,
       purpose: "twilio-recording-upload",
     },
@@ -108,6 +160,11 @@ async function downloadAndProcessRecording(
   userId
 ) {
   try {
+    if (!userId) {
+      console.error("❌ No userId provided for recording processing");
+      return;
+    }
+
     const audioUrl = recordingUrl + ".wav";
 
     console.log(`📥 Downloading recording from: ${audioUrl}`);
@@ -137,6 +194,7 @@ async function downloadAndProcessRecording(
 
     // Generate a system token for this upload
     const systemToken = generateSystemToken(userId);
+    console.log(`🔑 Generated system token for user: ${userId}`);
 
     // Upload to your call processing endpoint
     const uploadResponse = await axios.post(
@@ -174,17 +232,32 @@ async function callStarted(req, res) {
     const { callSid, phoneNumber } = req.body;
     const userId = req.user._id;
 
-    const twilioCall = await TwilioCall.create({
-      callSid,
-      userId,
-      phoneNumber,
-      status: "in-progress",
-    });
+    console.log(`📞 Call-started received - CallSid: ${callSid}, User: ${userId}, Phone: ${phoneNumber}`);
 
-    console.log(`📞 Call started - CallSid: ${callSid}, User: ${userId}`);
+    // Check if call metadata already exists (from voice webhook)
+    let twilioCall = await TwilioCall.findOne({ callSid });
+    
+    if (twilioCall) {
+      console.log(`✅ Found existing call metadata for CallSid: ${callSid}`);
+      // Update the existing record if needed
+      twilioCall.phoneNumber = phoneNumber;
+      twilioCall.status = "in-progress";
+      await twilioCall.save();
+    } else {
+      console.log(`🆕 Creating new call metadata for CallSid: ${callSid}`);
+      // Create new record
+      twilioCall = await TwilioCall.create({
+        callSid,
+        userId,
+        phoneNumber,
+        status: "in-progress",
+      });
+    }
+
+    console.log(`📞 Call metadata confirmed - CallSid: ${callSid}, User: ${userId}`);
     res.status(200).json({ success: true, callId: twilioCall._id });
   } catch (error) {
-    console.error("Error storing call metadata:", error);
+    console.error("Error in callStarted:", error);
     res.status(500).json({ success: false, error: error.message });
   }
 }

@@ -12,7 +12,7 @@ const User = require("../../models/user.js");
 
 function signToken(userResponse) {
   return jwt.sign({ data: userResponse }, jwtSecret, {
-    expiresIn: constants.expiresIn || "23h",
+    expiresIn: constants.expiresIn || "30d",
   });
 }
 
