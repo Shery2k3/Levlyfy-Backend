@@ -84,6 +84,75 @@ async function uploadCall(req, res) {
   }
 }
 
+async function uploadCallRecording(req, res) {
+  try {
+    // Extract user info from system token
+    const userId = req.user?._id;
+    const isSystemToken = req.user?.system;
+
+    if (!userId) {
+      return validationErrorResponse(res, "User authentication failed");
+    }
+
+    // File has already been uploaded to S3 by multer middleware
+    const file = req.file;
+    if (!file) {
+      return validationErrorResponse(res, "No audio file provided");
+    }
+
+    console.log("Twilio recording uploaded to S3:", {
+      location: file.location,
+      key: file.key,
+      size: file.size,
+      callSid: req.headers['x-twilio-callsid'],
+      recordingSid: req.headers['x-twilio-recordingsid']
+    });
+
+    // Create Call document with S3 info
+    const { callNotes } = req.body || {};
+
+    const newCall = await Call.create({
+      userId,
+      status: "uploaded",
+      callNotes: callNotes || "",
+      audioUrl: file.location,
+      s3Key: file.key,
+      source: 'twilio-recording', // Mark as Twilio recording
+      twilioCallSid: req.headers['x-twilio-callsid'],
+      twilioRecordingSid: req.headers['x-twilio-recordingsid']
+    });
+
+    // 🚀 Trigger background processing (transcription + analysis)
+    console.log(`🔄 Starting background processing for Twilio recording ${newCall._id}`);
+    CallProcessingService.processCallInBackground(newCall._id.toString());
+
+    return successResponse(
+      res,
+      {
+        id: newCall._id,
+        status: newCall.status,
+        message: "Twilio recording uploaded successfully and processing started",
+        s3Location: file.location,
+        s3Key: file.key,
+        fileSize: `${(file.size / 1024 / 1024).toFixed(2)}MB`,
+        processingStatus: "Background processing initiated",
+        source: "twilio-recording"
+      },
+      "Twilio recording uploaded successfully - transcription and analysis in progress"
+    );
+  } catch (error) {
+    // If DB save fails, delete the S3 file to avoid orphaned files
+    if (req.file?.key) {
+      deleteFromS3(req.file.key).catch((deleteError) => {
+        console.error("Failed to delete S3 file after DB error:", deleteError);
+      });
+    }
+
+    console.error("Error in uploadCallRecording controller:", error);
+    return errorResponse(res, error.message || "Failed to upload Twilio recording", 500);
+  }
+}
+
 async function reanalyzeCall(req, res) {
   const callId = req.params.id;
   const call = await Call.findById(callId);
@@ -372,6 +441,7 @@ async function getCallStatus(req, res) {
 
 module.exports = {
   uploadCall,
+  uploadCallRecording,
   reanalyzeCall,
   downloadDecryptedAudio,
   testgpt,

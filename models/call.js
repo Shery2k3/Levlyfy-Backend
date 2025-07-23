@@ -1,26 +1,41 @@
-// Call model: stores S3 URL, userId, transcript, sentiment, and call metrics
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
-const callSchema = new mongoose.Schema({
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  audioUrl: { type: String }, // S3 public URL
-  s3Key: { type: String }, // S3 object key for internal operations
-  transcript: { type: String },
-  sentiment: { type: String },
-  score: { type: Number }, // Performance score from GPT analysis
-  feedback: { type: String }, // Feedback from GPT analysis
-  summary: { type: String }, // Call summary from GPT analysis
-  callNotes: { type: String }, // User-provided notes about the call
-  status: { 
-    type: String, 
-    enum: ['uploaded', 'processing', 'transcribed', 'analyzed', 'failed'], 
-    default: 'uploaded' 
+const callSchema = new mongoose.Schema(
+  {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    audioUrl: { type: String },
+    s3Key: { type: String },
+    transcript: { type: String },
+    sentiment: { type: String },
+    score: { type: Number },
+    feedback: { type: String },
+    summary: { type: String },
+    callNotes: { type: String },
+    status: {
+      type: String,
+      enum: ["uploaded", "processing", "transcribed", "analyzed", "failed"],
+      default: "uploaded",
+    },
+    errorMessage: { type: String },
+
+    // New fields for Twilio integration
+    source: {
+      type: String,
+      enum: ["manual-upload", "twilio-recording"],
+      default: "manual-upload",
+    },
+    twilioCallSid: { type: String },
+    twilioRecordingSid: { type: String },
+
+    // Existing fields
+    dealClosed: { type: Boolean, default: false },
+    upsell: { type: Boolean, default: false },
   },
-  errorMessage: { type: String }, // Store error message if processing fails
-  dealMade: { type: Boolean, default: false }, // Whether a deal was made on this call
-  dealClosed: { type: Boolean, default: false }, // Whether a deal was closed on this call
-  upsell: { type: Boolean, default: false }, // Whether an upsell was achieved
-  // Add more fields as needed for gamification/analytics
-}, { timestamps: true });
+  { timestamps: true }
+);
 
-module.exports = mongoose.model('Call', callSchema);
+module.exports = mongoose.model("Call", callSchema);

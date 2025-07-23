@@ -17,6 +17,7 @@ const {
   analyzeCallComplete,
   getAllUserCalls,
   getCallStatus,
+  uploadCallRecording,
 } = require("../controllers/callController");
 
 function handleValidation(req, res, next) {
@@ -35,6 +36,14 @@ router.post(
   // uploadCallValidator,             // 3. Validate (if needed)
   handleValidation, // 4. Handle validation errors
   uploadCall // 5. Save to database
+);
+
+// No auth for twilio
+router.post(
+  "/upload-call-recording",
+  uploadToS3.single("audio"), // Upload file to S3
+  authMiddleware, // This will work with system tokens
+  uploadCallRecording // Process Twilio recording
 );
 
 router.post("/testgpt", testgpt);
