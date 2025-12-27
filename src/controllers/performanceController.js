@@ -114,6 +114,14 @@ async function getMyStats(req, res) {
     ]);
     const totalScore = totalScoreAgg[0]?.total || 0;
     
+    // Get calls made today (regardless of period filter)
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const callsMadeToday = await Call.countDocuments({
+      userId,
+      createdAt: { $gte: startOfToday }
+    });
+    
     // Helper function to calculate rank (same logic as leaderboard)
     const calculateRank = (callsMade, dealsClosed, totalScore) => {
       if (totalScore >= 500 && callsMade >= 10 && dealsClosed >= 3) {
@@ -132,6 +140,7 @@ async function getMyStats(req, res) {
       dealsClosed,
       upsells,
       totalScore,
+      callsMadeToday,
       rank: calculateRank(callsMade, dealsClosed, totalScore),
     }, 'Your stats fetched');
   } catch (err) {
